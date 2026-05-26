@@ -29,7 +29,7 @@ MY_ACCOUNT = "V0013992"
 MY_PASSWORD = "Xs123456"
 PUBLIC_KEY = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCctQTweXAiaQ3ct5bhj6nyisOQiGmgC/hUdK+QO9I9DudcQSUMxIXvMtpiogB9RWkAUC4b86x7SiGD6aCp7PbTspd5fLf8F6LUIj/BtmktQq7JNsShjAWBxCkE49HIIvPvl9rt8lO7MkgS2vUT04tEYeu/62ltOc3BljJXoPC4pQIDAQAB"
 
-AUTO_REGIONS = ["河北", "安徽", "湖南", "湖北", "新疆"]
+AUTO_REGIONS = ["湖南", "湖北", "新疆", "河北", "安徽"]
 
 # 可选省份列表
 ALL_PROVINCES = ["河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北",
@@ -320,7 +320,7 @@ def get_unsigned_orders_data(token, is_tomorrow=False):
                 "address": city + (district if district else ""),  # 显示用地址
                 "status": status,
                 "receive_time": format_time(item.get("receive_time")),
-                "delivery_date": format_time(item.get("delivery_date")),  # 需求到货时间
+                "expected_arrival_date": format_time(item.get("expected_arrival_date")),  # 应当到货时间
                 "signed_weight": float(item.get("stowage_all_weight", 0) or 0)  # 总重量
             })
 
@@ -848,7 +848,7 @@ def set_provinces():
         provinces = data.get('provinces', [])
         if isinstance(provinces, list):
             # 允许空数组（全部不选）或至少选择一个
-            AUTO_REGIONS = provinces if len(provinces) > 0 else ["河北", "安徽", "湖南", "湖北", "新疆"]
+            AUTO_REGIONS = provinces if len(provinces) > 0 else ["湖南", "湖北", "新疆", "河北", "安徽"]
             # 保存到文件
             try:
                 config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'province_config.txt')
