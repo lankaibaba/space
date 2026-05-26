@@ -648,7 +648,7 @@ def background_refresh():
 # ====================== API路由 ======================
 @app.route('/')
 def index():
-    index_path = os.path.join(BASE_DIR, 'static', 'index.html')
+    index_path = os.path.join(BASE_DIR, 'index.html')
     with open(index_path, 'r', encoding='utf-8') as f:
         return f.read()
 
