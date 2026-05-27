@@ -1,3 +1,10 @@
+import sys, os
+
+# 打包后静默运行，不弹命令行窗口
+if getattr(sys, 'frozen', False):
+    sys.stdout = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, 'w')
+
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import requests
