@@ -1,4 +1,4 @@
-import sys, os
+import sys, os, re
 
 # 打包后静默运行，不弹命令行窗口
 if getattr(sys, 'frozen', False):
@@ -57,6 +57,8 @@ SELECTED_NETWORKS = ["零担"]
 LOGIN_URL = "https://sdm.etransfar.com/jbl/api/login/?_allow_anonymous=true"
 QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/purchase_order/page"
 RECEIPT_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/receive_management/page"
+KPI_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal_tabul/page"
+KPI_DETAIL_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal/supplier_abnormal/375549423855472640"
 
 # 全局缓存数据
 cache_data = {
@@ -66,6 +68,7 @@ cache_data = {
     "today_unsigned": {},
     "tomorrow_unsigned": {},
     "sender_region_orders": {},
+    "kpi_penalty": {},
     "last_update": None
 }
 cache_lock = threading.Lock()
@@ -414,6 +417,201 @@ def get_sender_region_orders_data(token):
     }
 
 
+def extract_penalty_score(description):
+    """从KPI处罚描述中提取扣分数"""
+    if not description:
+        return 0
+    total = 0
+    # 按优先级匹配，避免重复匹配
+    # 优先匹配 "扣绩效考核X分" 或 "扣绩效考核X分/单"
+    m = re.search(r'扣绩效考核(\d+\.?\d*)分', description)
+    if m:
+        return float(m.group(1))
+    # 匹配 "考核记X分" 或 "考核X分"
+    m = re.search(r'考核[记扣]?(\d+\.?\d*)分', description)
+    if m:
+        return float(m.group(1))
+    # 匹配 "扣X分"
+    m = re.search(r'扣(\d+\.?\d*)分', description)
+    if m:
+        return float(m.group(1))
+    return 0
+
+
+def extract_date_from_exception_no(exception_no):
+    """从异常编号中提取日期，如 AB202605270044 -> 2026-05-27"""
+    if not exception_no:
+        return None
+    m = re.match(r'AB(\d{4})(\d{2})(\d{2})', exception_no)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return None
+
+
+def get_kpi_cycle_periods():
+    """获取两个KPI考核周期（当月23号到次月22号）"""
+    bj_tz = timezone(timedelta(hours=8))
+    now_bj = datetime.now(bj_tz)
+
+    # 当前周期：如果今天 >= 23号，当前周期从本月23号开始；否则从上月23号开始
+    if now_bj.day >= 23:
+        # 当前周期：本月23号 ~ 下月22号
+        cur_start = datetime(now_bj.year, now_bj.month, 23)
+        if now_bj.month == 12:
+            cur_end = datetime(now_bj.year + 1, 1, 22)
+        else:
+            cur_end = datetime(now_bj.year, now_bj.month + 1, 22)
+        # 上一周期：上月23号 ~ 本月22号
+        prev_end = datetime(now_bj.year, now_bj.month, 22)
+        if now_bj.month == 1:
+            prev_start = datetime(now_bj.year - 1, 12, 23)
+        else:
+            prev_start = datetime(now_bj.year, now_bj.month - 1, 23)
+    else:
+        # 当前周期：上月23号 ~ 本月22号
+        if now_bj.month == 1:
+            cur_start = datetime(now_bj.year - 1, 12, 23)
+        else:
+            cur_start = datetime(now_bj.year, now_bj.month - 1, 23)
+        cur_end = datetime(now_bj.year, now_bj.month, 22)
+        # 上一周期：上上月23号 ~ 上月22号
+        if now_bj.month <= 2:
+            prev_start = datetime(now_bj.year - 1, 12, 23) if now_bj.month == 2 else datetime(now_bj.year - 1, 11, 23)
+        else:
+            prev_start = datetime(now_bj.year, now_bj.month - 2, 23)
+        if now_bj.month == 1:
+            prev_end = datetime(now_bj.year - 1, 12, 22)
+        else:
+            prev_end = datetime(now_bj.year, now_bj.month - 1, 22)
+
+    return {
+        "current": {"start": cur_start.strftime("%Y-%m-%d"), "end": cur_end.strftime("%Y-%m-%d")},
+        "previous": {"start": prev_start.strftime("%Y-%m-%d"), "end": prev_end.strftime("%Y-%m-%d")}
+    }
+
+
+def get_kpi_penalty_data(token):
+    """获取KPI类处罚数据，按考核周期汇总，并获取合同和考核详情"""
+    try:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json;charset=UTF-8"
+        }
+        payload = {
+            "direction": "DESC",
+            "property": "id",
+            "fromClientType": "pc",
+            "number": 0,
+            "size": 9999,
+            "dynamicFormCode": "supplier_abnormal_tabul",
+            "rules": [
+                {"field": "abnormal_category_dk", "option": "EQ", "values": ["KPICLASS"]}
+            ],
+            "sorts": [{"property": "exception_no", "direction": "DESC"}],
+            "specialConditions": []
+        }
+        resp = requests.post(KPI_QUERY_URL, json=payload, headers=headers, timeout=20)
+        all_items = resp.json().get("content", [])
+    except Exception as e:
+        print(f"KPI数据查询失败: {e}")
+        return {"current_period": {"orders": [], "total_score": 0}, "previous_period": {"orders": [], "total_score": 0}, "periods": {}}
+
+    # 并行获取每条记录的详情（合同信息和考核扣分）
+    def fetch_detail(dynamic_form_value_id):
+        try:
+            url = f"{KPI_DETAIL_URL}/{dynamic_form_value_id}"
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200 and resp.text:
+                detail = resp.json()
+                eha = detail.get("data", {}).get("exception_handling_a", {})
+                return {
+                    "contract": eha.get("related_contract_no_show") or "-",
+                    "appraisal_results": eha.get("appraisal_results"),
+                    "customer": eha.get("customer") or "-",
+                    "send_region": eha.get("send_region_code_show") or "-",
+                    "receive_region": eha.get("receive_region_code_show") or "-"
+                }
+        except:
+            pass
+        return {"contract": "-", "appraisal_results": None, "customer": "-", "send_region": "-", "receive_region": "-"}
+
+    # 并行获取详情
+    detail_map = {}
+    with ThreadPoolExecutor(max_workers=25) as executor:
+        future_to_id = {}
+        for item in all_items:
+            dfvid = item.get("dynamic_form_value_id")
+            if dfvid:
+                future_to_id[executor.submit(fetch_detail, dfvid)] = dfvid
+        for future in as_completed(future_to_id):
+            dfvid = future_to_id[future]
+            try:
+                detail_map[dfvid] = future.result()
+            except:
+                detail_map[dfvid] = {"contract": "-", "appraisal_results": None, "customer": "-", "send_region": "-", "receive_region": "-"}
+
+    periods = get_kpi_cycle_periods()
+    cur_start = periods["current"]["start"]
+    cur_end = periods["current"]["end"]
+    prev_start = periods["previous"]["start"]
+    prev_end = periods["previous"]["end"]
+
+    current_orders = []
+    previous_orders = []
+    current_total_score = 0
+    previous_total_score = 0
+
+    for item in all_items:
+        eno = item.get("exception_no", "")
+        item_date = extract_date_from_exception_no(eno)
+        if not item_date:
+            continue
+
+        dfvid = item.get("dynamic_form_value_id", "")
+        detail = detail_map.get(dfvid, {})
+
+        # 优先使用详情接口的考核扣分，其次用描述正则提取
+        appraisal = detail.get("appraisal_results")
+        score = float(appraisal) if appraisal is not None else extract_penalty_score(item.get("problem_descripetion", ""))
+
+        order_info = {
+            "exception_no": eno,
+            "order_no": item.get("oder_number_show") or "-",
+            "carrier": item.get("carrier_show") or "-",
+            "driver": item.get("driver") or "-",
+            "license_plate": item.get("license_plate") or "-",
+            "subclass": item.get("abnormal_subclass_dk_show") or "-",
+            "description": item.get("problem_descripetion") or "",
+            "score": score,
+            "date": item_date,
+            "contract": detail.get("contract", "-"),
+            "customer": detail.get("customer", "-"),
+            "send_region": detail.get("send_region", "-"),
+            "receive_region": detail.get("receive_region", "-")
+        }
+
+        if cur_start <= item_date <= cur_end:
+            current_orders.append(order_info)
+            current_total_score += score
+        elif prev_start <= item_date <= prev_end:
+            previous_orders.append(order_info)
+            previous_total_score += score
+
+    return {
+        "current_period": {
+            "orders": current_orders,
+            "total_score": round(current_total_score, 1),
+            "count": len(current_orders)
+        },
+        "previous_period": {
+            "orders": previous_orders,
+            "total_score": round(previous_total_score, 1),
+            "count": len(previous_orders)
+        },
+        "periods": periods
+    }
+
+
 def get_weekly_weight_data(token):
     """获取近7天每天的订单总重量数据（不包括今天）"""
     headers = {
@@ -575,7 +773,7 @@ def refresh_all_data():
         return False
     try:
         with ThreadPoolExecutor(max_workers=8) as executor:
-            # 并行提交所有查询任务
+            # 并行提交所有查询任务（KPI单独刷新，不在此处加载）
             future_to_key = {
                 executor.submit(get_manual_query_data, token): "manual_query",
                 executor.submit(get_auto_monitor_data, token): "auto_monitor",
@@ -744,6 +942,87 @@ def get_weekly_weight():
     """获取近7天订单重量数据"""
     with cache_lock:
         return jsonify(cache_data.get("weekly_weight", {}))
+
+
+@app.route('/api/kpi-penalty')
+def get_kpi_penalty():
+    """获取KPI类处罚数据"""
+    with cache_lock:
+        return jsonify(cache_data.get("kpi_penalty", {}))
+
+
+def _login_and_refresh(refresh_funcs):
+    """通用刷新辅助函数：登录并执行指定的数据获取函数"""
+    global cache_data
+    token = login()
+    if not token:
+        return {"success": False, "message": "登录失败"}
+    try:
+        with ThreadPoolExecutor(max_workers=len(refresh_funcs)) as executor:
+            future_to_key = {executor.submit(fn, token): key for key, fn in refresh_funcs.items()}
+            results = {}
+            for future in as_completed(future_to_key):
+                key = future_to_key[future]
+                try:
+                    results[key] = future.result()
+                except Exception as e:
+                    print(f"刷新 {key} 失败: {e}")
+                    results[key] = {}
+        with cache_lock:
+            cache_data.update(results)
+            cache_data["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return {"success": True, "message": "刷新成功"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@app.route('/api/refresh/overview', methods=['POST'])
+def refresh_overview():
+    """单独刷新概览卡片 + 今日/明日未签收"""
+    result = _login_and_refresh({
+        "auto_monitor": get_auto_monitor_data,
+        "today_unsigned": get_today_unsigned_data,
+        "tomorrow_unsigned": get_tomorrow_unsigned_data,
+    })
+    return jsonify(result)
+
+
+@app.route('/api/refresh/pending-detail', methods=['POST'])
+def refresh_pending_detail():
+    """单独刷新待配载订单 + 分省统计"""
+    result = _login_and_refresh({
+        "manual_query": get_manual_query_data,
+        "auto_monitor": get_auto_monitor_data,
+        "region_stats": get_region_stats_data,
+    })
+    return jsonify(result)
+
+
+@app.route('/api/refresh/sender-region', methods=['POST'])
+def refresh_sender_region():
+    """单独刷新发货省份待配载订单"""
+    result = _login_and_refresh({
+        "sender_region_orders": get_sender_region_orders_data,
+    })
+    return jsonify(result)
+
+
+@app.route('/api/refresh/weekly', methods=['POST'])
+def refresh_weekly():
+    """单独刷新近7天趋势图"""
+    result = _login_and_refresh({
+        "weekly_weight": get_weekly_weight_data,
+    })
+    return jsonify(result)
+
+
+@app.route('/api/refresh/kpi', methods=['POST'])
+def refresh_kpi():
+    """单独刷新KPI处罚数据（懒加载，首次或手动触发）"""
+    result = _login_and_refresh({
+        "kpi_penalty": get_kpi_penalty_data,
+    })
+    return jsonify(result)
 
 
 @app.route('/api/weekly-orders', methods=['POST'])

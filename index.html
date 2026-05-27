@@ -66,6 +66,22 @@
         }
         .filter-btn:hover { background: #f8fafc; transform: scale(1.02); }
         .filter-btn.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: transparent; }
+        .module-refresh-btn {
+            padding: 6px;
+            border-radius: 8px;
+            border: 1.5px solid #e2e8f0;
+            background: white;
+            cursor: pointer;
+            transition: all 0.25s;
+            color: #64748b;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .module-refresh-btn:hover { background: #f1f5f9; color: #334155; }
+        .module-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .module-refresh-btn.spinning svg { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .loading-spinner {
             border: 3px solid #f3f3f3;
             border-top: 3px solid #667eea;
@@ -401,12 +417,19 @@
             
                     <!-- 分省统计（去除图表，保留数据卡片） -->
             <div class="card p-6 lg:col-span-2">
-                <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                    </svg>
-                    <span id="regionStatsTitle">省待配载订单统计</span>
-                </h2>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <span id="regionStatsTitle">省待配载订单统计</span>
+                    </h2>
+                    <button onclick="handleRefreshModule('pending-detail')" id="refreshPendingDetailBtn" class="module-refresh-btn" title="刷新">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                    </button>
+                </div>
                 <div class="grid grid-cols-5 gap-4" id="regionStats"></div>
             </div>
 
@@ -419,12 +442,19 @@
                         </svg>
                         近7天订单重量趋势
                     </h2>
-                    <button onclick="openWeeklyOrdersModal()" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm flex items-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                        </svg>
-                        查询订单明细
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button onclick="handleRefreshModule('weekly')" id="refreshWeeklyBtn" class="module-refresh-btn" title="刷新">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                        </button>
+                        <button onclick="openWeeklyOrdersModal()" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                            查询订单明细
+                        </button>
+                    </div>
                 </div>
                 <div style="height: 300px;">
                     <canvas id="weeklyWeightChart"></canvas>
@@ -443,8 +473,8 @@
                     </h2>
                     <div class="flex items-center gap-3">
                         <span class="px-3 py-1 bg-slate-100 text-slate-600 text-sm rounded-full" id="orderCount">-- 单</span>
-                        <button onclick="handleRefreshPending()" id="refreshPendingBtn" class="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition">
-                            <svg class="w-4 h-4" id="refreshPendingIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <button onclick="handleRefreshModule('pending-detail')" id="refreshPendingBtn" class="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                             </svg>
                             刷新
@@ -507,6 +537,11 @@
                         发货省份待配载订单
                     </h2>
                     <div class="flex items-center gap-4">
+                        <button onclick="handleRefreshModule('sender-region')" id="refreshSenderBtn" class="module-refresh-btn" title="刷新">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                        </button>
                         <span class="px-3 py-1 bg-orange-100 text-orange-600 text-sm rounded-full" id="senderOrderCount">-- 单</span>
                         <span class="text-sm text-slate-500">总重量: <span id="senderOrderWeight" class="font-medium text-slate-700">--</span> kg</span>
                     </div>
@@ -535,6 +570,83 @@
                 </div>
             </div>
 
+            <!-- KPI类处罚统计 -->
+            <div class="card p-6 lg:col-span-2">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        KPI类处罚统计
+                    </h2>
+                    <div class="flex items-center gap-3">
+                        <button onclick="handleRefreshKpi()" id="refreshKpiBtn" class="module-refresh-btn" title="刷新KPI数据">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                        </button>
+                        <span class="px-3 py-1 bg-rose-100 text-rose-600 text-sm rounded-full" id="kpiBadge">--</span>
+                    </div>
+                </div>
+                <!-- 周期汇总卡片 -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="p-4 bg-rose-50 rounded-lg border border-rose-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium text-rose-700" id="kpiPrevPeriodLabel">上一周期</span>
+                            <span class="text-xs text-rose-500" id="kpiPrevPeriodDate">--</span>
+                        </div>
+                        <div class="flex items-end gap-4">
+                            <div>
+                                <p class="text-2xl font-bold text-rose-600" id="kpiPrevScore">--</p>
+                                <p class="text-xs text-slate-400">扣分</p>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-700" id="kpiPrevCount">--</p>
+                                <p class="text-xs text-slate-400">处罚单数</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4 bg-orange-50 rounded-lg border border-orange-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium text-orange-700" id="kpiCurPeriodLabel">当前周期</span>
+                            <span class="text-xs text-orange-500" id="kpiCurPeriodDate">--</span>
+                        </div>
+                        <div class="flex items-end gap-4">
+                            <div>
+                                <p class="text-2xl font-bold text-orange-600" id="kpiCurScore">--</p>
+                                <p class="text-xs text-slate-400">扣分</p>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-700" id="kpiCurCount">--</p>
+                                <p class="text-xs text-slate-400">处罚单数</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 切换查看不同周期详情 -->
+                <div class="flex gap-2 mb-3">
+                    <button class="filter-btn active" id="kpiTabPrev" onclick="switchKpiTab('previous')">上一周期</button>
+                    <button class="filter-btn" id="kpiTabCur" onclick="switchKpiTab('current')">当前周期</button>
+                </div>
+                <!-- KPI处罚明细表 -->
+                <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                    <table class="w-full text-sm">
+                        <thead class="sticky top-0 bg-slate-50">
+                            <tr class="text-left text-slate-500 text-xs uppercase">
+                                <th class="py-2 pr-3">日期</th>
+                                <th class="py-2 pr-3">关联合同</th>
+                                <th class="py-2 pr-3">订单号</th>
+                                <th class="py-2 pr-3">子类</th>
+                                <th class="py-2 pr-3">客户</th>
+                                <th class="py-2 pr-3">扣分</th>
+                                <th class="py-2">问题描述</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kpiOrderTable"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- 今日未签收 -->
             <div class="card p-6">
                 <div class="flex items-center justify-between mb-4">
@@ -544,7 +656,14 @@
                         </svg>
                         今日应到货 - 未签收
                     </h2>
-                    <span class="px-3 py-1 bg-red-100 text-red-600 text-sm rounded-full" id="todayUnsignedBadge">-- 单</span>
+                    <div class="flex items-center gap-2">
+                        <button onclick="handleRefreshModule('overview')" id="refreshOverviewBtn" class="module-refresh-btn" title="刷新">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                        </button>
+                        <span class="px-3 py-1 bg-red-100 text-red-600 text-sm rounded-full" id="todayUnsignedBadge">-- 单</span>
+                    </div>
                 </div>
                 <div class="filter-group mb-4 flex flex-wrap gap-2" id="todayFilter">
                     <button class="filter-btn active" data-province="">全部</button>
@@ -700,6 +819,76 @@
                 overlay.style.display = 'none';
                 btn.disabled = false;
                 icon.classList.remove('animate-spin');
+            }
+        }
+
+        // 通用模块刷新函数
+        async function handleRefreshModule(module) {
+            const btnMap = {
+                'overview': 'refreshOverviewBtn',
+                'pending-detail': 'refreshPendingDetailBtn',
+                'sender-region': 'refreshSenderBtn',
+                'weekly': 'refreshWeeklyBtn',
+            };
+            const btnId = btnMap[module];
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+
+            btn.disabled = true;
+            btn.classList.add('spinning');
+
+            try {
+                const resp = await fetch(`/api/refresh/${module}`, { method: 'POST' });
+                const result = await resp.json();
+
+                if (result.success) {
+                    // 重新获取最新数据并更新UI
+                    const dataResp = await fetch('/api/dashboard');
+                    const data = await dataResp.json();
+                    if (data.success) {
+                        cachedData = data.data;
+                        updateUI(data.data);
+                        document.getElementById('lastUpdate').textContent = data.data.last_update || new Date().toLocaleString('zh-CN');
+                    }
+                } else {
+                    console.error(`刷新 ${module} 失败:`, result.message);
+                }
+            } catch (err) {
+                console.error(`刷新 ${module} 异常:`, err);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('spinning');
+            }
+        }
+
+        // KPI单独刷新（懒加载）
+        let kpiLoaded = false;
+        async function handleRefreshKpi() {
+            const btn = document.getElementById('refreshKpiBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('spinning');
+            }
+
+            try {
+                const resp = await fetch('/api/refresh/kpi', { method: 'POST' });
+                const result = await resp.json();
+
+                if (result.success) {
+                    const dataResp = await fetch('/api/kpi-penalty');
+                    const kpiData = await dataResp.json();
+                    updateKpiPenalty(kpiData);
+                    kpiLoaded = true;
+                } else {
+                    console.error('刷新KPI失败:', result.message);
+                }
+            } catch (err) {
+                console.error('刷新KPI异常:', err);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('spinning');
+                }
             }
         }
 
@@ -1162,6 +1351,83 @@
             `).join('');
         }
 
+        let kpiCurrentTab = 'previous';
+        let kpiData = null;
+
+        function updateKpiPenalty(data) {
+            kpiData = data;
+            const periods = data.periods || {};
+            const prev = data.previous_period || {};
+            const cur = data.current_period || {};
+
+            // 更新周期标签
+            document.getElementById('kpiPrevPeriodLabel').textContent = '上一周期';
+            document.getElementById('kpiCurPeriodLabel').textContent = '当前周期';
+            if (periods.previous) {
+                document.getElementById('kpiPrevPeriodDate').textContent = periods.previous.start + ' ~ ' + periods.previous.end;
+            }
+            if (periods.current) {
+                document.getElementById('kpiCurPeriodDate').textContent = periods.current.start + ' ~ ' + periods.current.end;
+            }
+
+            // 更新数据
+            document.getElementById('kpiPrevScore').textContent = prev.total_score ?? '--';
+            document.getElementById('kpiPrevCount').textContent = prev.count ?? '--';
+            document.getElementById('kpiCurScore').textContent = cur.total_score ?? '--';
+            document.getElementById('kpiCurCount').textContent = cur.count ?? '--';
+
+            const totalCount = (prev.count || 0) + (cur.count || 0);
+            document.getElementById('kpiBadge').textContent = `${totalCount} 条处罚`;
+
+            // 渲染当前选中的周期表格
+            renderKpiTable(kpiCurrentTab);
+        }
+
+        function switchKpiTab(tab) {
+            kpiCurrentTab = tab;
+            document.getElementById('kpiTabPrev').classList.toggle('active', tab === 'previous');
+            document.getElementById('kpiTabCur').classList.toggle('active', tab === 'current');
+            renderKpiTable(tab);
+        }
+
+        function renderKpiTable(tab) {
+            const tbody = document.getElementById('kpiOrderTable');
+            if (!kpiData) {
+                tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-400">暂无数据</td></tr>';
+                return;
+            }
+
+            const periodData = tab === 'previous' ? kpiData.previous_period : kpiData.current_period;
+            const orders = periodData.orders || [];
+
+            if (orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-400">该周期暂无KPI处罚记录</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = orders.map(o => `
+                <tr class="border-b border-slate-100 hover:bg-slate-50">
+                    <td class="py-2 pr-3 text-xs text-slate-500">${o.date || '-'}</td>
+                    <td class="py-2 pr-3 text-xs">${o.contract || '-'}</td>
+                    <td class="py-2 pr-3 font-mono text-xs">${o.order_no || '-'}</td>
+                    <td class="py-2 pr-3"><span class="px-2 py-0.5 text-xs rounded ${getSubclassBadgeClass(o.subclass)}">${o.subclass || '-'}</span></td>
+                    <td class="py-2 pr-3 text-xs">${o.customer || '-'}</td>
+                    <td class="py-2 pr-3"><span class="font-bold ${o.score > 0 ? 'text-red-600' : 'text-slate-400'}">${o.score > 0 ? o.score : '-'}</span></td>
+                    <td class="py-2 text-xs text-slate-600" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(o.description || '').replace(/"/g, '&quot;')}">${o.description || '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function getSubclassBadgeClass(subclass) {
+            const map = {
+                '延误': 'bg-red-100 text-red-600',
+                '投诉': 'bg-orange-100 text-orange-600',
+                '安全违规': 'bg-yellow-100 text-yellow-700',
+                '服务态度': 'bg-purple-100 text-purple-600'
+            };
+            return map[subclass] || 'bg-slate-100 text-slate-600';
+        }
+
         function updateSenderRegionOrders(data) {
             // 更新分省统计
             const statsContainer = document.getElementById('senderRegionStats');
@@ -1241,11 +1507,14 @@
         }
 
         // 初始加载
-        fetchDashboard();
+        fetchDashboard().then(() => {
+            // KPI懒加载：首次加载后自动获取KPI数据
+            setTimeout(() => handleRefreshKpi(), 1000);
+        });
         loadProvinceConfig();
         loadNetworkConfig();
 
-        // 5分钟自动刷新
+        // 5分钟自动刷新（不含KPI）
         setInterval(fetchDashboard, 300000);
 
         // ==================== 省份配置 ====================
