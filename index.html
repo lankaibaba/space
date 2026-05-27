@@ -1087,7 +1087,7 @@
                     ${o.detailed_address ? `<p class="text-xs text-slate-500">${o.detailed_address}</p>` : ''}
                     ${o.signed_weight ? `<p class="text-xs text-amber-600 font-medium">⚖️ ${Number(o.signed_weight).toFixed(2)} kg</p>` : ''}
                     ${o.receive_time ? `<p class="text-xs text-slate-400 mt-1">🕐 ${o.receive_time}</p>` : ''}
-                    ${o.expected_arrival_date ? `<p class="text-xs text-red-500 font-medium mt-1">应当到货: ${o.expected_arrival_date}</p>` : ''}
+                    ${o.delivery_date ? `<p class="text-xs text-red-500 font-medium mt-1">应当到货: ${o.delivery_date}</p>` : ''}
                 </div>
             `).join('');
         }
@@ -1157,7 +1157,7 @@
                     ${o.detailed_address ? `<p class="text-xs text-slate-500">${o.detailed_address}</p>` : ''}
                     ${o.signed_weight ? `<p class="text-xs text-amber-600 font-medium">⚖️ ${Number(o.signed_weight).toFixed(2)} kg</p>` : ''}
                     ${o.receive_time ? `<p class="text-xs text-slate-400 mt-1">🕐 ${o.receive_time}</p>` : ''}
-                    ${o.expected_arrival_date ? `<p class="text-xs text-amber-600 font-medium mt-1">应当到货: ${o.expected_arrival_date}</p>` : ''}
+                    ${o.delivery_date ? `<p class="text-xs text-amber-600 font-medium mt-1">应当到货: ${o.delivery_date}</p>` : ''}
                 </div>
             `).join('');
         }

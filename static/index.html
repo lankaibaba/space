@@ -330,7 +330,7 @@ function renderTodayUnsigned() {
         <td>${o.order_no}</td><td>${o.receive_name || '-'}</td><td>${o.receiver_phone || '-'}</td>
         <td>${o.province || '-'}</td><td>${o.city || '-'}</td><td>${o.district || '-'}</td>
         <td><span class="status-badge status-pending">${o.status || '-'}</span></td>
-        <td>${o.receive_time || '-'}</td><td>${o.expected_arrival_date || '-'}</td>
+        <td>${o.receive_time || '-'}</td><td>${o.delivery_date || '-'}</td>
         <td>${(o.signed_weight || 0).toLocaleString()}</td>
     </tr>`).join('');
 }
@@ -361,7 +361,7 @@ function renderTomorrowUnsigned() {
         <td>${o.order_no}</td><td>${o.receive_name || '-'}</td><td>${o.receiver_phone || '-'}</td>
         <td>${o.province || '-'}</td><td>${o.city || '-'}</td><td>${o.district || '-'}</td>
         <td><span class="status-badge status-pending">${o.status || '-'}</span></td>
-        <td>${o.receive_time || '-'}</td><td>${o.expected_arrival_date || '-'}</td>
+        <td>${o.receive_time || '-'}</td><td>${o.delivery_date || '-'}</td>
         <td>${(o.signed_weight || 0).toLocaleString()}</td>
     </tr>`).join('');
 }

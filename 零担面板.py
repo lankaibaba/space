@@ -320,7 +320,7 @@ def get_unsigned_orders_data(token, is_tomorrow=False):
                 "address": city + (district if district else ""),  # 显示用地址
                 "status": status,
                 "receive_time": format_time(item.get("receive_time")),
-                "expected_arrival_date": format_time(item.get("expected_arrival_date")),  # 应当到货时间
+                "delivery_date": format_time(item.get("delivery_date")),  # 应当到货时间
                 "signed_weight": float(item.get("stowage_all_weight", 0) or 0)  # 总重量
             })
 
