@@ -1,3 +1,5 @@
 .claude/settings.local.json
 __pycache__/
 *.pyc
+dist/订单可视化看板.exe
+订单可视化看板.spec
