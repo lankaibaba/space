@@ -68,6 +68,7 @@ cache_data = {
     "today_unsigned": {},
     "tomorrow_unsigned": {},
     "sender_region_orders": {},
+    "today_orders": {},
     "kpi_penalty": {},
     "last_update": None
 }
@@ -414,6 +415,79 @@ def get_sender_region_orders_data(token):
         "orders": all_orders,
         "total_count": total_count,
         "total_weight": round(total_weight, 2)
+    }
+
+
+def get_today_orders_data(token):
+    """获取今日配载订单统计（配载时间为今天的订单）"""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json;charset=UTF-8",
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    bj_tz = timezone(timedelta(hours=8))
+    now_bj = datetime.now(bj_tz)
+    today_bj = now_bj.date()
+    day_start_utc = datetime(today_bj.year, today_bj.month, today_bj.day, 0, 0, 0) - timedelta(hours=8)
+    day_end_utc = datetime(today_bj.year, today_bj.month, today_bj.day, 23, 59, 59) - timedelta(hours=8)
+
+    network_ids = [ALL_NETWORKS[n] for n in SELECTED_NETWORKS if n in ALL_NETWORKS]
+
+    payload = {
+        "debugFlag": False,
+        "developmentSystemId": None,
+        "direction": "DESC",
+        "dynamicFormCode": "stowage_sign_receipt",
+        "fromClientType": "pc",
+        "number": 0,
+        "property": "id",
+        "rules": [
+            {"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
+                day_start_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                day_end_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            ]},
+            {"field": "k_contract_line_a.network", "option": "IN", "values": network_ids}
+        ],
+        "size": 999,
+        "sorts": [{"property": "order_date", "direction": "DESC"}],
+        "specialConditions": []
+    }
+
+    try:
+        resp = requests.post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
+        orders = resp.json().get("content", [])
+    except:
+        orders = []
+
+    total_weight = 0
+    order_list = []
+    region_map = {}
+
+    for o in orders:
+        w = float(o.get("stowage_all_weight", 0) or 0)
+        total_weight += w
+        province = o.get("province_id_show", "未知") or "未知"
+
+        region_map.setdefault(province, {"count": 0, "weight": 0})
+        region_map[province]["count"] += 1
+        region_map[province]["weight"] += w
+
+        order_list.append({
+            "order_no": o.get("source_order_no", "无"),
+            "receive_name": o.get("receive_name", ""),
+            "province": province,
+            "weight": w,
+            "create_time": format_time(o.get("exe_pur_order_b", {}).get("order_date", ""))
+        })
+
+    region_details = [{"region": r, "count": v["count"], "weight": round(v["weight"], 2)} for r, v in region_map.items()]
+
+    return {
+        "total_count": len(orders),
+        "total_weight": round(total_weight, 2),
+        "region_details": region_details,
+        "detail_orders": order_list
     }
 
 
@@ -782,6 +856,7 @@ def refresh_all_data():
                 executor.submit(get_tomorrow_unsigned_data, token): "tomorrow_unsigned",
                 executor.submit(get_weekly_weight_data, token): "weekly_weight",
                 executor.submit(get_sender_region_orders_data, token): "sender_region_orders",
+                executor.submit(get_today_orders_data, token): "today_orders",
             }
 
             # 收集结果
@@ -813,13 +888,14 @@ def refresh_pending_orders():
         print("登录失败，跳过本次刷新")
         return False
     try:
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             # 并行刷新待配载相关数据
             future_to_key = {
                 executor.submit(get_manual_query_data, token): "manual_query",
                 executor.submit(get_auto_monitor_data, token): "auto_monitor",
                 executor.submit(get_region_stats_data, token): "region_stats",
                 executor.submit(get_sender_region_orders_data, token): "sender_region_orders",
+                executor.submit(get_today_orders_data, token): "today_orders",
             }
 
             results = {}
@@ -1025,6 +1101,15 @@ def refresh_kpi():
     return jsonify(result)
 
 
+@app.route('/api/refresh/today-orders', methods=['POST'])
+def refresh_today_orders():
+    """单独刷新今日订单统计"""
+    result = _login_and_refresh({
+        "today_orders": get_today_orders_data,
+    })
+    return jsonify(result)
+
+
 @app.route('/api/weekly-orders', methods=['POST'])
 def query_weekly_orders():
     """手动查询近7天订单详情"""
@@ -1034,6 +1119,19 @@ def query_weekly_orders():
     try:
         results = query_weekly_orders_by_day(token)
         return jsonify({"success": True, "data": results})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+
+
+@app.route('/api/today-orders', methods=['POST'])
+def query_today_orders():
+    """手动查询今日配载订单详情"""
+    token = login()
+    if not token:
+        return jsonify({"success": False, "message": "登录失败"})
+    try:
+        data = get_today_orders_data(token)
+        return jsonify({"success": True, "data": data})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
 
