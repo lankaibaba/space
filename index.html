@@ -90,6 +90,15 @@
             height: 40px;
             animation: spin 1s linear infinite;
         }
+        .loading-spinner-small {
+            border: 2px solid #e2e8f0;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+        }
         @keyframes spin { 100% { transform: rotate(360deg); } }
         .table-container { max-height: 320px; overflow-y: auto; }
         .table-container::-webkit-scrollbar { width: 8px; }
@@ -369,7 +378,7 @@
                     <div>
                         <p class="text-sm font-medium text-slate-500 mb-1">待配载总重量</p>
                         <p class="text-3xl font-bold text-slate-800"><span id="totalWeight">--</span></p>
-                        <p class="text-xs text-slate-400 font-medium">kg</p>
+                        <p class="text-xs text-slate-400 font-medium">吨</p>
                     </div>
                     <div class="stat-icon bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-200">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -409,6 +418,42 @@
                         </svg>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- 今日订单统计 -->
+        <div class="card p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                    </svg>
+                    今日订单统计
+                </h2>
+                <div class="flex items-center gap-4">
+                    <button onclick="handleRefreshModule('today-orders')" id="refreshTodayOrdersBtn" class="module-refresh-btn" title="刷新">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                    </button>
+                    <button onclick="openTodayOrdersModal()" class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition text-sm flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        查询订单明细
+                    </button>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="text-center p-4 bg-teal-50 rounded-lg border border-teal-100">
+                    <p class="text-3xl font-bold text-teal-600" id="todayOrdersCount">--</p>
+                    <p class="text-sm text-slate-500 mt-1">今日订单数</p>
+                </div>
+                <div class="text-center p-4 bg-teal-50 rounded-lg border border-teal-100">
+                    <p class="text-3xl font-bold text-teal-600"><span id="todayOrdersWeight">--</span> <span class="text-base font-medium text-slate-500">吨</span></p>
+                    <p class="text-sm text-slate-500 mt-1">今日配载总重量</p>
+                </div>
+                <div class="col-span-2 flex flex-wrap gap-2 items-center" id="todayOrdersRegionStats"></div>
             </div>
         </div>
 
@@ -490,7 +535,7 @@
                             <tr class="text-left text-slate-500 text-xs uppercase">
                                 <th class="py-2 pr-3">订单号</th>
                                 <th class="py-2 pr-3">区域</th>
-                                <th class="py-2 pr-3">重量(kg)</th>
+                                <th class="py-2 pr-3">重量(吨)</th>
                                 <th class="py-2 pr-3">仓库</th>
                                 <th class="py-2 pr-3">创建时间</th>
                                 <th class="py-2 pr-3">紧急</th>
@@ -521,7 +566,7 @@
                         </div>
                         <div class="text-right">
                             <p class="text-xl font-bold text-emerald-600" id="detailTotalWeight">--</p>
-                            <p class="text-xs text-slate-400">总重量(kg)</p>
+                            <p class="text-xs text-slate-400">总重量(吨)</p>
                         </div>
                     </div>
                 </div>
@@ -543,7 +588,7 @@
                             </svg>
                         </button>
                         <span class="px-3 py-1 bg-orange-100 text-orange-600 text-sm rounded-full" id="senderOrderCount">-- 单</span>
-                        <span class="text-sm text-slate-500">总重量: <span id="senderOrderWeight" class="font-medium text-slate-700">--</span> kg</span>
+                        <span class="text-sm text-slate-500">总重量: <span id="senderOrderWeight" class="font-medium text-slate-700">--</span> 吨</span>
                     </div>
                 </div>
                 <!-- 分省统计 -->
@@ -560,8 +605,8 @@
                                 <th class="py-2 pr-4">订单号</th>
                                 <th class="py-2 pr-4">发货省份</th>
                                 <th class="py-2 pr-4">收货省份</th>
-                                <th class="py-2 pr-4">总重量(kg)</th>
-                                <th class="py-2 pr-4">配载重量(kg)</th>
+                                <th class="py-2 pr-4">总重量(吨)</th>
+                                <th class="py-2 pr-4">配载重量(吨)</th>
                                 <th class="py-2">仓库</th>
                             </tr>
                         </thead>
@@ -699,11 +744,15 @@
         </footer>
     </main>
 
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-black/20 flex items-center justify-center z-50" style="display: flex;">
-        <div class="bg-white p-8 rounded-xl shadow-lg text-center">
-            <div class="loading-spinner mx-auto mb-4"></div>
-            <p class="text-slate-600">正在加载数据...</p>
+    <!-- 右上角刷新状态指示器（非阻塞） -->
+    <div id="refreshStatus" class="fixed top-4 right-4 z-50 transition-all duration-300" style="display: none;">
+        <div class="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200 px-4 py-3 flex items-center gap-3 min-w-[200px]">
+            <div class="loading-spinner-small"></div>
+            <div class="flex-1">
+                <p class="text-sm font-medium text-slate-700" id="refreshStatusText">刷新中...</p>
+                <p class="text-xs text-slate-400 mt-0.5" id="refreshStatusDetail">正在加载数据</p>
+            </div>
+            <div id="refreshProgress" class="text-xs font-mono text-blue-600 bg-blue-50 px-2 py-1 rounded-md hidden">0%</div>
         </div>
     </div>
 
@@ -719,6 +768,23 @@
                 </button>
             </div>
             <div id="weeklyOrdersContent" class="p-4 overflow-y-auto max-h-[80vh]">
+                <div class="text-center py-12 text-slate-400">点击查询按钮加载数据...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 今日订单详情弹窗 -->
+    <div id="todayOrdersModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden m-4">
+            <div class="flex items-center justify-between p-4 border-b bg-teal-50">
+                <h3 class="text-lg font-semibold text-teal-800">今日配载订单明细</h3>
+                <button onclick="closeTodayOrdersModal()" class="p-2 hover:bg-teal-100 rounded-lg">
+                    <svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="todayOrdersContent" class="p-4 overflow-y-auto max-h-[80vh]">
                 <div class="text-center py-12 text-slate-400">点击查询按钮加载数据...</div>
             </div>
         </div>
@@ -748,6 +814,49 @@
             return Number(num).toLocaleString('zh-CN');
         }
 
+        function formatWeight(kg) {
+            if (kg === undefined || kg === null || isNaN(kg)) return '--';
+            const tons = kg / 1000;
+            // 保留所有有效数字，去掉尾部多余的0
+            return formatNumber(parseFloat(tons.toFixed(10)));
+        }
+
+        // ==================== 刷新状态指示器 ====================
+        let refreshTimer = null;
+        let refreshStartTime = null;
+        function showRefreshStatus(text, detail) {
+            const el = document.getElementById('refreshStatus');
+            const textEl = document.getElementById('refreshStatusText');
+            const detailEl = document.getElementById('refreshStatusDetail');
+            const progressEl = document.getElementById('refreshProgress');
+            textEl.textContent = text || '刷新中...';
+            detailEl.textContent = detail || '正在加载数据';
+            progressEl.classList.add('hidden');
+            el.style.display = 'block';
+            refreshStartTime = Date.now();
+            // 更新耗时显示
+            clearInterval(refreshTimer);
+            refreshTimer = setInterval(() => {
+                const elapsed = ((Date.now() - refreshStartTime) / 1000).toFixed(1);
+                detailEl.textContent = `已耗时 ${elapsed}s`;
+            }, 100);
+        }
+        function updateRefreshProgress(current, total) {
+            const progressEl = document.getElementById('refreshProgress');
+            const pct = Math.round((current / total) * 100);
+            progressEl.textContent = `${pct}%`;
+            progressEl.classList.remove('hidden');
+        }
+        function hideRefreshStatus() {
+            clearInterval(refreshTimer);
+            const el = document.getElementById('refreshStatus');
+            // 先显示完成状态，然后淡出
+            const detailEl = document.getElementById('refreshStatusDetail');
+            const elapsed = ((Date.now() - refreshStartTime) / 1000).toFixed(1);
+            detailEl.textContent = `完成，耗时 ${elapsed}s`;
+            setTimeout(() => { el.style.display = 'none'; }, 1500);
+        }
+
         async function fetchDashboard() {
             try {
                 const resp = await fetch('/api/dashboard');
@@ -768,20 +877,16 @@
                         renderProvinceCheckboxes();
                     }
                 }
-                // 隐藏加载状态
-                document.getElementById('loadingOverlay').style.display = 'none';
             } catch (err) {
                 console.error('获取数据失败:', err);
-                document.getElementById('loadingOverlay').querySelector('p').textContent = '数据加载失败，请刷新页面';
             }
         }
 
         async function handleRefresh() {
-            const overlay = document.getElementById('loadingOverlay');
             const btn = document.getElementById('refreshBtn');
             const icon = document.getElementById('refreshIcon');
 
-            overlay.style.display = 'flex';
+            showRefreshStatus('全局刷新中', '正在同步配置并刷新数据...');
             btn.disabled = true;
             icon.classList.add('animate-spin');
 
@@ -789,14 +894,14 @@
                 // 先同步当前省份和网点配置到后端，再全局刷新
                 const provinces = Array.from(selectedProvincesSet);
                 const networks = Array.from(selectedNetworksSet);
-                
+
                 const refreshResp = await fetch('/api/refresh', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ provinces, networks })
                 });
                 const refreshResult = await refreshResp.json();
-                
+
                 if (refreshResult.success) {
                     // 同步后端返回的最新配置
                     if (refreshResult.provinces) {
@@ -816,7 +921,7 @@
             } catch (err) {
                 console.error('刷新失败:', err);
             } finally {
-                overlay.style.display = 'none';
+                hideRefreshStatus();
                 btn.disabled = false;
                 icon.classList.remove('animate-spin');
             }
@@ -829,6 +934,14 @@
                 'pending-detail': 'refreshPendingDetailBtn',
                 'sender-region': 'refreshSenderBtn',
                 'weekly': 'refreshWeeklyBtn',
+                'today-orders': 'refreshTodayOrdersBtn',
+            };
+            const nameMap = {
+                'overview': '概览卡片',
+                'pending-detail': '待配载订单',
+                'sender-region': '发货省份',
+                'weekly': '近7天趋势',
+                'today-orders': '今日订单',
             };
             const btnId = btnMap[module];
             const btn = document.getElementById(btnId);
@@ -836,6 +949,7 @@
 
             btn.disabled = true;
             btn.classList.add('spinning');
+            showRefreshStatus(`刷新${nameMap[module] || module}`, '正在获取最新数据...');
 
             try {
                 const resp = await fetch(`/api/refresh/${module}`, { method: 'POST' });
@@ -856,6 +970,7 @@
             } catch (err) {
                 console.error(`刷新 ${module} 异常:`, err);
             } finally {
+                hideRefreshStatus();
                 btn.disabled = false;
                 btn.classList.remove('spinning');
             }
@@ -980,7 +1095,7 @@
                     const todayUnsigned = data.today_unsigned;
                     const tomorrowUnsigned = data.tomorrow_unsigned;
                     document.getElementById('totalCount').textContent = formatNumber(autoMonitor.total_count);
-                    document.getElementById('totalWeight').textContent = formatNumber(autoMonitor.total_weight);
+                    document.getElementById('totalWeight').textContent = formatWeight(autoMonitor.total_weight);
                     document.getElementById('todayUnsigned').textContent = formatNumber(todayUnsigned.unsigned_count);
                     document.getElementById('todayTotal').textContent = formatNumber(todayUnsigned.total_orders);
                     document.getElementById('tomorrowTotal').textContent = formatNumber(tomorrowUnsigned.total_orders);
@@ -1018,6 +1133,13 @@
                         updateSenderRegionOrders(data.sender_region_orders);
                     }
                     resolve();
+                }),
+                // 板块7: 今日订单统计
+                new Promise(resolve => {
+                    if (data.today_orders) {
+                        updateTodayOrdersStats(data.today_orders);
+                    }
+                    resolve();
                 })
             ]);
         }
@@ -1030,7 +1152,7 @@
                 <div class="text-center p-3 bg-slate-50 rounded-lg">
                     <p class="text-lg font-bold" style="color: ${COLORS[i]}">${r.count}</p>
                     <p class="text-xs text-slate-500">${r.region}</p>
-                    <p class="text-xs text-slate-400">${r.weight.toFixed(2)} kg</p>
+                    <p class="text-xs text-slate-400">${formatWeight(r.weight)} 吨</p>
                 </div>
             `).join('');
         }
@@ -1054,15 +1176,15 @@
                             <p class="text-xs text-slate-400">订单</p>
                         </div>
                         <div class="text-right w-20">
-                            <p class="text-lg font-bold">${r.weight.toFixed(2)}</p>
-                            <p class="text-xs text-slate-400">kg</p>
+                            <p class="text-lg font-bold">${formatWeight(r.weight)}</p>
+                            <p class="text-xs text-slate-400">吨</p>
                         </div>
                     </div>
                 </div>
             `).join('');
 
             document.getElementById('detailTotalCount').textContent = regionStats.total_count;
-            document.getElementById('detailTotalWeight').textContent = regionStats.total_weight.toFixed(2);
+            document.getElementById('detailTotalWeight').textContent = formatWeight(regionStats.total_weight);
         }
 
         function updateOrderTable(orders) {
@@ -1117,7 +1239,7 @@
                 <tr class="border-b border-slate-100 hover:bg-slate-50">
                     <td class="py-2 pr-3 font-mono text-xs">${o.order_no}</td>
                     <td class="py-2 pr-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">${o.region}</span></td>
-                    <td class="py-2 pr-3">${o.weight.toFixed(2)}</td>
+                    <td class="py-2 pr-3">${formatWeight(o.weight)}</td>
                     <td class="py-2 pr-3 text-xs text-slate-500">${o.warehouse}</td>
                     <td class="py-2 pr-3 text-xs text-slate-500">${o.order_date || '-'}</td>
                     <td class="py-2 pr-3"><span class="px-2 py-0.5 text-xs rounded ${o.urgent_flag_custom === '紧急' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}">${o.urgent_flag_custom || '-'}</span></td>
@@ -1167,10 +1289,10 @@
             let datasets = [];
 
             if (weeklyData.datasets && weeklyData.datasets.length > 0) {
-                // 旧数据结构：按省份/网点分组
+                // 旧数据结构：按省份/网点分组（数据从kg转为吨）
                 datasets = weeklyData.datasets.map((ds, idx) => ({
                     label: ds.branch_id || ds.warehouse_id || ds.outlet_id || ds.province,
-                    data: ds.data,
+                    data: ds.data.map(v => v / 1000),
                     borderColor: ds.color || COLORS[idx],
                     backgroundColor: (ds.color || COLORS[idx]) + '20',
                     tension: 0.4,
@@ -1179,10 +1301,10 @@
                     pointHoverRadius: 6
                 }));
             } else if (weeklyData.data && weeklyData.data.length > 0) {
-                // 新数据结构：单条总重量线
+                // 新数据结构：单条总重量线（数据从kg转为吨）
                 datasets = [{
                     label: '配载总重量',
-                    data: weeklyData.data,
+                    data: weeklyData.data.map(v => v / 1000),
                     borderColor: '#8b5cf6',
                     backgroundColor: '#8b5cf620',
                     tension: 0.4,
@@ -1206,7 +1328,7 @@
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return `${context.raw.toFixed(2)} kg`;
+                                    return `${formatNumber(context.raw)} 吨`;
                                 }
                             }
                         }
@@ -1216,7 +1338,7 @@
                             beginAtZero: true,
                             title: {
                                 display: true,
-                                text: '重量 (kg)'
+                                text: '重量 (吨)'
                             }
                         },
                         x: {
@@ -1234,7 +1356,7 @@
             const legendEl = document.getElementById('weeklyWeightLegend');
             legendEl.innerHTML = `
                 <div class="flex items-center gap-4 text-lg">
-                    <span class="font-bold text-purple-600">${formatNumber(totalWeight.toFixed(2))} kg</span>
+                    <span class="font-bold text-purple-600">${formatWeight(totalWeight)} 吨</span>
                     <span class="text-slate-500">近7天配载总重量</span>
                 </div>
             `;
@@ -1274,7 +1396,7 @@
                     </div>
                     <p class="text-sm text-slate-600 font-medium">${o.province || ''}${o.city || ''}${o.district || ''}</p>
                     ${o.detailed_address ? `<p class="text-xs text-slate-500">${o.detailed_address}</p>` : ''}
-                    ${o.signed_weight ? `<p class="text-xs text-amber-600 font-medium">⚖️ ${Number(o.signed_weight).toFixed(2)} kg</p>` : ''}
+                    ${o.signed_weight ? `<p class="text-xs text-amber-600 font-medium">⚖️ ${formatWeight(o.signed_weight)} 吨</p>` : ''}
                     ${o.receive_time ? `<p class="text-xs text-slate-400 mt-1">🕐 ${o.receive_time}</p>` : ''}
                     ${o.delivery_date ? `<p class="text-xs text-red-500 font-medium mt-1">需求到货: ${o.delivery_date}</p>` : ''}
                 </div>
@@ -1344,7 +1466,7 @@
                     </div>
                     <p class="text-sm text-slate-600 font-medium">${o.province || ''}${o.city || ''}${o.district || ''}</p>
                     ${o.detailed_address ? `<p class="text-xs text-slate-500">${o.detailed_address}</p>` : ''}
-                    ${o.signed_weight ? `<p class="text-xs text-amber-600 font-medium">⚖️ ${Number(o.signed_weight).toFixed(2)} kg</p>` : ''}
+                    ${o.signed_weight ? `<p class="text-xs text-amber-600 font-medium">⚖️ ${formatWeight(o.signed_weight)} 吨</p>` : ''}
                     ${o.receive_time ? `<p class="text-xs text-slate-400 mt-1">🕐 ${o.receive_time}</p>` : ''}
                     ${o.delivery_date ? `<p class="text-xs text-amber-600 font-medium mt-1">需求到货: ${o.delivery_date}</p>` : ''}
                 </div>
@@ -1438,13 +1560,13 @@
                 <div class="text-center p-3 bg-slate-50 rounded-lg">
                     <p class="text-lg font-bold" style="color: ${COLORS_LOCAL[i]}">${r.count}</p>
                     <p class="text-xs text-slate-500">${r.region}</p>
-                    <p class="text-xs text-slate-400">${r.weight.toFixed(2)} kg</p>
+                    <p class="text-xs text-slate-400">${formatWeight(r.weight)} 吨</p>
                 </div>
             `).join('');
 
             // 更新总数和重量
             document.getElementById('senderOrderCount').textContent = `${data.total_count} 单`;
-            document.getElementById('senderOrderWeight').textContent = formatNumber(data.total_weight);
+            document.getElementById('senderOrderWeight').textContent = formatWeight(data.total_weight);
 
             allSenderOrders = data.orders || [];
 
@@ -1491,8 +1613,8 @@
                     <td class="py-2 pr-4 font-mono text-xs">${o.order_no}</td>
                     <td class="py-2 pr-4"><span class="px-2 py-0.5 bg-orange-100 text-orange-600 text-xs rounded">${o.sender_region || '无'}</span></td>
                     <td class="py-2 pr-4"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">${o.receive_region || '无'}</span></td>
-                    <td class="py-2 pr-4">${o.weight.toFixed(2)}</td>
-                    <td class="py-2 pr-4 text-amber-600 font-medium">${o.stowage_weight.toFixed(2)}</td>
+                    <td class="py-2 pr-4">${formatWeight(o.weight)}</td>
+                    <td class="py-2 pr-4 text-amber-600 font-medium">${formatWeight(o.stowage_weight)}</td>
                     <td class="py-2 text-xs text-slate-500">${o.warehouse}</td>
                 </tr>
             `).join('');
@@ -1506,8 +1628,154 @@
             }
         }
 
+        // ==================== 今日订单统计 ====================
+        function updateTodayOrdersStats(data) {
+            if (!data) return;
+            document.getElementById('todayOrdersCount').textContent = formatNumber(data.total_count);
+            document.getElementById('todayOrdersWeight').textContent = formatWeight(data.total_weight);
+
+            // 渲染分省小卡片
+            const container = document.getElementById('todayOrdersRegionStats');
+            const COLORS_LOCAL = ['#0d9488', '#14b8a6', '#2dd4bf', '#5eead4', '#99f6e4'];
+            const regions = data.region_details || [];
+            container.innerHTML = regions.map((r, i) => `
+                <div class="text-center px-3 py-2 bg-teal-50 rounded-lg border border-teal-100">
+                    <p class="text-lg font-bold" style="color: ${COLORS_LOCAL[i % COLORS_LOCAL.length]}">${r.count}</p>
+                    <p class="text-xs text-slate-500">${r.region}</p>
+                    <p class="text-xs text-slate-400">${formatWeight(r.weight)} 吨</p>
+                </div>
+            `).join('');
+        }
+
+        let todayOrdersProvince = '';
+        let allTodayOrders = [];
+
+        function openTodayOrdersModal() {
+            const modal = document.getElementById('todayOrdersModal');
+            const content = document.getElementById('todayOrdersContent');
+            modal.style.display = 'flex';
+            content.innerHTML = '<div class="text-center py-12"><div class="loading-spinner mx-auto mb-4"></div><p class="text-slate-600">正在查询今日订单...</p></div>';
+
+            fetch('/api/today-orders', { method: 'POST' })
+                .then(resp => resp.json())
+                .then(result => {
+                    if (result.success) {
+                        renderTodayOrdersDetail(result.data);
+                    } else {
+                        content.innerHTML = `<div class="text-center py-12 text-red-500">查询失败: ${result.message}</div>`;
+                    }
+                })
+                .catch(err => {
+                    content.innerHTML = `<div class="text-center py-12 text-red-500">请求失败: ${err}</div>`;
+                });
+        }
+
+        function closeTodayOrdersModal() {
+            document.getElementById('todayOrdersModal').style.display = 'none';
+        }
+
+        function renderTodayOrdersDetail(data) {
+            allTodayOrders = data.detail_orders || [];
+            const content = document.getElementById('todayOrdersContent');
+
+            // 提取省份列表
+            const provinces = [...new Set(allTodayOrders.map(o => o.province).filter(p => p && p !== '未知'))].sort();
+
+            let html = '';
+
+            // 汇总信息
+            html += `
+                <div class="flex items-center justify-between mb-4 p-4 bg-teal-50 rounded-lg">
+                    <div class="flex gap-8">
+                        <div>
+                            <p class="text-sm text-slate-500">订单总数</p>
+                            <p class="text-xl font-bold text-teal-600">${data.total_count}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-500">配载总重量</p>
+                            <p class="text-xl font-bold text-teal-600">${formatWeight(data.total_weight)} 吨</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // 省份筛选按钮
+            html += `<div class="filter-group mb-4 flex flex-wrap gap-2" id="todayOrdersFilter">`;
+            html += `<button class="filter-btn ${todayOrdersProvince === '' ? 'active' : ''}" onclick="filterTodayOrdersDetail('')">全部</button>`;
+            provinces.forEach(p => {
+                html += `<button class="filter-btn ${todayOrdersProvince === p ? 'active' : ''}" onclick="filterTodayOrdersDetail('${p}')">${p}</button>`;
+            });
+            html += `</div>`;
+
+            html += `<div id="todayOrdersDetailTable"></div>`;
+
+            content.innerHTML = html;
+            todayOrdersProvince = '';
+            filterTodayOrdersDetail('');
+        }
+
+        function filterTodayOrdersDetail(province) {
+            todayOrdersProvince = province;
+            const container = document.getElementById('todayOrdersDetailTable');
+
+            // 更新筛选按钮状态
+            const filterEl = document.getElementById('todayOrdersFilter');
+            if (filterEl) {
+                filterEl.querySelectorAll('.filter-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.textContent === (province || '全部'));
+                });
+            }
+
+            let orders = allTodayOrders;
+            if (province) {
+                orders = orders.filter(o => o.province === province);
+            }
+
+            if (orders.length === 0) {
+                container.innerHTML = `<div class="text-center py-8 text-slate-400">暂无数据</div>`;
+                return;
+            }
+
+            let html = `
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 sticky top-0">
+                        <tr class="text-left text-slate-500 text-xs">
+                            <th class="py-2 px-3">订单号</th>
+                            <th class="py-2 px-3">收货方</th>
+                            <th class="py-2 px-3">省份</th>
+                            <th class="py-2 px-3">配载重量(吨)</th>
+                            <th class="py-2 px-3">配载时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            orders.forEach(o => {
+                html += `
+                    <tr class="border-t hover:bg-slate-50">
+                        <td class="py-2 px-3 font-mono text-xs">${o.order_no}</td>
+                        <td class="py-2 px-3">${o.receive_name || '无'}</td>
+                        <td class="py-2 px-3">${o.province || '无'}</td>
+                        <td class="py-2 px-3 text-teal-600 font-medium">${formatWeight(o.weight)}</td>
+                        <td class="py-2 px-3 text-xs text-slate-500">${o.create_time || '-'}</td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+
+            container.innerHTML = html;
+        }
+
+        // 今日订单弹窗点击外部关闭
+        document.getElementById('todayOrdersModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeTodayOrdersModal();
+            }
+        });
+
         // 初始加载
+        showRefreshStatus('首次加载', '正在从服务器获取数据...');
         fetchDashboard().then(() => {
+            hideRefreshStatus();
             // KPI懒加载：首次加载后自动获取KPI数据
             setTimeout(() => handleRefreshKpi(), 1000);
         });
@@ -1787,7 +2055,7 @@
                         </div>
                         <div>
                             <p class="text-sm text-slate-500">配载总重量</p>
-                            <p class="text-xl font-bold text-purple-600">${totalWeight.toFixed(2)} kg</p>
+                            <p class="text-xl font-bold text-purple-600">${formatWeight(totalWeight)} 吨</p>
                         </div>
                     </div>
                 </div>
@@ -1801,7 +2069,7 @@
                                 <span class="font-medium">${day.date}</span>
                                 <span class="px-2 py-0.5 bg-purple-100 text-purple-700 text-sm rounded">${day.count} 单</span>
                             </div>
-                            <span class="font-bold text-purple-600">${day.total_weight.toFixed(2)} kg</span>
+                            <span class="font-bold text-purple-600">${formatWeight(day.total_weight)} 吨</span>
                         </div>
                 `;
                 
@@ -1813,7 +2081,7 @@
                                     <th class="py-2 px-3">订单号</th>
                                     <th class="py-2 px-3">收货方</th>
                                     <th class="py-2 px-3">省份</th>
-                                    <th class="py-2 px-3">配载重量(kg)</th>
+                                    <th class="py-2 px-3">配载重量(吨)</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1824,7 +2092,7 @@
                                 <td class="py-2 px-3 font-mono text-xs">${o.order_no}</td>
                                 <td class="py-2 px-3">${o.receive_name || '无'}</td>
                                 <td class="py-2 px-3">${o.province || '无'}</td>
-                                <td class="py-2 px-3 text-purple-600 font-medium">${o.stowage_weight.toFixed(2)}</td>
+                                <td class="py-2 px-3 text-purple-600 font-medium">${formatWeight(o.stowage_weight)}</td>
                             </tr>
                         `;
                     });
