@@ -75,6 +75,22 @@ cache_data = {
 cache_lock = threading.Lock()
 
 
+# ====================== HTTP连接池（线程本地复用，避免重复TLS握手） ======================
+_session_local = threading.local()
+
+def _sess():
+    """获取线程本地的 requests Session，自动复用TCP/TLS连接"""
+    if not hasattr(_session_local, 's'):
+        s = requests.Session()
+        # 增加连接池：每个host保持5个连接，最多10个
+        from requests.adapters import HTTPAdapter
+        adapter = HTTPAdapter(pool_connections=5, pool_maxsize=10)
+        s.mount('https://', adapter)
+        s.mount('http://', adapter)
+        _session_local.s = s
+    return _session_local.s
+
+
 # ====================== 工具函数 ======================
 def rsa_encrypt(password):
     pub_key = f"-----BEGIN PUBLIC KEY-----\n{PUBLIC_KEY}\n-----END PUBLIC KEY-----"
@@ -98,7 +114,7 @@ def login():
             "User-Agent": "Mozilla/5.0",
             "Referer": "https://sdm.etransfar.com/jbl/"
         }
-        resp = requests.post(LOGIN_URL, json=payload, headers=headers, timeout=15)
+        resp = _sess().post(LOGIN_URL, json=payload, headers=headers, timeout=15)
         data = resp.json()
         if data.get("status") == "login":
             return data["token"]
@@ -156,7 +172,7 @@ def query_orders(token, region):
             ],
             "specialConditions": []
         }
-        resp = requests.post(QUERY_URL, json=payload, headers=headers, timeout=20)
+        resp = _sess().post(QUERY_URL, json=payload, headers=headers, timeout=20)
         return resp.json().get("content", [])
     except:
         return []
@@ -258,7 +274,7 @@ def _fetch_region_orders(token, region):
 
 def get_pending_orders_unified(token):
     """统一获取待配载数据：合并manual_query + auto_monitor + region_stats，每个省份只查一次API"""
-    with ThreadPoolExecutor(max_workers=len(AUTO_REGIONS)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(AUTO_REGIONS), 3)) as executor:
         futures = {executor.submit(_fetch_region_orders, token, r): r for r in AUTO_REGIONS}
         region_results = {}
         for future in as_completed(futures):
@@ -346,7 +362,7 @@ def get_unsigned_orders_data(token, is_tomorrow=False):
     }
 
     try:
-        resp = requests.post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
+        resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
         orders = resp.json().get("content", [])
     except:
         orders = []
@@ -428,7 +444,7 @@ def query_orders_by_sender_region(token, region):
             ],
             "specialConditions": []
         }
-        resp = requests.post(QUERY_URL, json=payload, headers=headers, timeout=20)
+        resp = _sess().post(QUERY_URL, json=payload, headers=headers, timeout=20)
         return resp.json().get("content", [])
     except:
         return []
@@ -454,7 +470,7 @@ def _fetch_sender_region_orders(token, region):
 def get_sender_region_orders_data(token):
     """获取发货地址为配置省份的待配载订单（并行查询）"""
     regions = AUTO_REGIONS.copy()
-    with ThreadPoolExecutor(max_workers=len(regions)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(regions), 3)) as executor:
         futures = {executor.submit(_fetch_sender_region_orders, token, r): r for r in regions}
         region_results = {}
         for future in as_completed(futures):
@@ -520,7 +536,7 @@ def get_today_orders_data(token):
     }
 
     try:
-        resp = requests.post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
+        resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
         orders = resp.json().get("content", [])
     except:
         orders = []
@@ -649,7 +665,7 @@ def get_kpi_penalty_data(token):
             "sorts": [{"property": "exception_no", "direction": "DESC"}],
             "specialConditions": []
         }
-        resp = requests.post(KPI_QUERY_URL, json=payload, headers=headers, timeout=20)
+        resp = _sess().post(KPI_QUERY_URL, json=payload, headers=headers, timeout=20)
         all_items = resp.json().get("content", [])
     except Exception as e:
         print(f"KPI数据查询失败: {e}")
@@ -659,7 +675,7 @@ def get_kpi_penalty_data(token):
     def fetch_detail(dynamic_form_value_id):
         try:
             url = f"{KPI_DETAIL_URL}/{dynamic_form_value_id}"
-            resp = requests.get(url, headers=headers, timeout=10)
+            resp = _sess().get(url, headers=headers, timeout=10)
             if resp.status_code == 200 and resp.text:
                 detail = resp.json()
                 eha = detail.get("data", {}).get("exception_handling_a", {})
@@ -751,56 +767,63 @@ def get_kpi_penalty_data(token):
     }
 
 
-def _fetch_daily_weight(token, bj_date, network_ids):
-    """并行获取单天的订单重量（线程安全）"""
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json;charset=UTF-8",
-        "User-Agent": "Mozilla/5.0"
-    }
-    day_start_utc = datetime(bj_date.year, bj_date.month, bj_date.day, 0, 0, 0) - timedelta(hours=8)
-    day_end_utc = datetime(bj_date.year, bj_date.month, bj_date.day, 23, 59, 59) - timedelta(hours=8)
-    payload = {
-        "debugFlag": False, "developmentSystemId": None, "direction": "DESC",
-        "dynamicFormCode": "stowage_sign_receipt", "fromClientType": "pc",
-        "number": 0, "property": "id",
-        "rules": [
-            {"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
-                day_start_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                day_end_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            ]},
-            {"field": "k_contract_line_a.network", "option": "IN", "values": network_ids}
-        ],
-        "size": 999, "sorts": [], "specialConditions": []
-    }
-    resp = requests.post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
-    resp_data = resp.json()
-    total_sum_data = resp_data.get("totalSumData", {})
-    return round(float(total_sum_data.get("stowage_all_weight", 0) or 0), 2) if total_sum_data else 0
-
-
 def get_weekly_weight_data(token):
-    """获取近7天每天的订单总重量数据（并行查询）"""
+    """获取近7天每天的订单总重量（单次查询7天范围，本地按日期分组，避免7次API调用）"""
     bj_tz = timezone(timedelta(hours=8))
     today_bj = datetime.now(bj_tz)
     date_list = [(today_bj - timedelta(days=i)).date() for i in range(7, 0, -1)]
     labels = [d.strftime("%m-%d") for d in date_list]
     network_ids = [ALL_NETWORKS[n] for n in SELECTED_NETWORKS if n in ALL_NETWORKS]
 
-    with ThreadPoolExecutor(max_workers=7) as executor:
-        futures = {executor.submit(_fetch_daily_weight, token, d, network_ids): d for d in date_list}
-        results = {}
-        for future in as_completed(futures):
-            d = futures[future]
-            try:
-                results[d] = future.result()
-            except Exception as e:
-                print(f"查询失败 {d.strftime('%m-%d')}: {e}")
-                results[d] = 0
+    # 一次查询覆盖整个7天范围
+    first_day = date_list[0]
+    last_day = date_list[-1]
+    day_start = datetime(first_day.year, first_day.month, first_day.day, 0, 0, 0) - timedelta(hours=8)
+    day_end = datetime(last_day.year, last_day.month, last_day.day, 23, 59, 59) - timedelta(hours=8)
 
-    data = [results[d] for d in date_list]
-    print(f"[{datetime.now()}] 近7天重量: {dict(zip(labels, data))}")
-    return {"labels": labels, "data": data}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json;charset=UTF-8",
+        "User-Agent": "Mozilla/5.0"
+    }
+    payload = {
+        "debugFlag": False, "developmentSystemId": None, "direction": "DESC",
+        "dynamicFormCode": "stowage_sign_receipt", "fromClientType": "pc",
+        "number": 0, "property": "id",
+        "rules": [
+            {"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
+                day_start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                day_end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            ]},
+            {"field": "k_contract_line_a.network", "option": "IN", "values": network_ids}
+        ],
+        "size": 9999, "sorts": [], "specialConditions": []
+    }
+
+    try:
+        resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=30)
+        data = resp.json()
+
+        # 按日期分组聚合重量
+        daily_weight = {d: 0.0 for d in date_list}
+        for o in data.get("content", []):
+            order_date_str = (o.get("exe_pur_order_b") or {}).get("order_date", "")
+            if order_date_str:
+                try:
+                    dt = datetime.fromisoformat(order_date_str.replace("Z", "+00:00"))
+                    order_date = dt.astimezone(bj_tz).date()
+                    if order_date in daily_weight:
+                        daily_weight[order_date] += float(o.get("stowage_all_weight", 0) or 0)
+                except Exception:
+                    pass
+
+        result_data = [round(daily_weight[d], 2) for d in date_list]
+    except Exception as e:
+        print(f"近7天重量查询失败: {e}")
+        result_data = [0] * 7
+
+    print(f"[{datetime.now()}] 近7天重量: {dict(zip(labels, result_data))}")
+    return {"labels": labels, "data": result_data}
 
 
 def query_weekly_orders_by_day(token):
@@ -850,7 +873,7 @@ def query_weekly_orders_by_day(token):
         }
 
         try:
-            resp = requests.post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
+            resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
             orders = resp.json().get("content", [])
             total_weight = 0
             for o in orders:
@@ -884,14 +907,19 @@ def query_weekly_orders_by_day(token):
 def refresh_all_data():
     """全局刷新 - 使用并行查询优化速度，返回是否成功"""
     global cache_data
+    from time import perf_counter
+    t0 = perf_counter()
     print(f"[{datetime.now()}] 开始刷新数据... (省份: {AUTO_REGIONS} | 网点: {SELECTED_NETWORKS})")
+
+    t_login_start = perf_counter()
     token = login()
+    print(f"  ⏱ 登录耗时: {perf_counter() - t_login_start:.2f}s")
     if not token:
         print("登录失败，跳过本次刷新")
         return False
     try:
         # 并行执行：统一查询(3合1) + 未签收 + 周趋势 + 发货省份 + 今日订单
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=6) as executor:
             future_unified = executor.submit(get_pending_orders_unified, token)
             future_today_unsigned = executor.submit(get_today_unsigned_data, token)
             future_tomorrow_unsigned = executor.submit(get_tomorrow_unsigned_data, token)
@@ -902,7 +930,9 @@ def refresh_all_data():
             # 收集结果
             results = {}
             try:
+                t1 = perf_counter()
                 manual_query, auto_monitor, region_stats = future_unified.result()
+                print(f"  ⏱ 统一查询(unified): {perf_counter() - t1:.2f}s")
                 results["manual_query"] = manual_query
                 results["auto_monitor"] = auto_monitor
                 results["region_stats"] = region_stats
@@ -920,7 +950,9 @@ def refresh_all_data():
                 (future_today_orders, "today_orders"),
             ]:
                 try:
+                    t2 = perf_counter()
                     results[key] = future.result()
+                    print(f"  ⏱ {key}: {perf_counter() - t2:.2f}s")
                 except Exception as e:
                     print(f"查询 {key} 失败: {e}")
                     results[key] = {}
@@ -928,7 +960,7 @@ def refresh_all_data():
         with cache_lock:
             cache_data.update(results)
             cache_data["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{datetime.now()}] 数据刷新完成")
+        print(f"[{datetime.now()}] 数据刷新完成 (总耗时: {perf_counter() - t0:.2f}s)")
         return True
     except Exception as e:
         print(f"刷新数据错误: {e}")
@@ -1199,7 +1231,7 @@ def search_order_by_no(token, order_no):
         "sorts": [{"property": "order_date", "direction": "DESC"}],
         "specialConditions": []
     }
-    resp = requests.post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=20)
+    resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=20)
     return resp.json().get("content", [])
 
 
