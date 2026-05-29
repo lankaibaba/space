@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>零担订单可视化看板</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif; background: #f0f2f5; color: #333; }
+        .header { background: linear-gradient(135deg, #1a73e8, #0d47a1); color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .header h1 { font-size: 20px; font-weight: 600; }
+        .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .selector-group { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 6px 10px; border-radius: 6px; }
+        .selector-group label { font-size: 13px; white-space: nowrap; }
+        .selector-group select { padding: 4px 8px; border-radius: 4px; border: none; font-size: 13px; min-width: 100px; }
+        .btn-refresh { background: #ff9800; color: #fff; border: none; padding: 8px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+        .btn-refresh:hover { background: #f57c00; transform: scale(1.02); }
+        .btn-refresh:disabled { opacity: 0.6; cursor: not-allowed; }
+        .container { padding: 16px 24px; max-width: 1600px; margin: 0 auto; }
+        .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 14px; margin-bottom: 16px; }
+        .card { background: #fff; border-radius: 10px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .card .label { font-size: 13px; color: #888; margin-bottom: 6px; }
+        .card .value { font-size: 28px; font-weight: 700; color: #1a73e8; }
+        .card .sub { font-size: 12px; color: #aaa; margin-top: 4px; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab { padding: 8px 18px; border: none; background: #e8eaed; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .tab.active { background: #fff; color: #1a73e8; font-weight: 600; box-shadow: 0 -2px 6px rgba(0,0,0,0.06); }
+        .tab:hover:not(.active) { background: #d2d4d7; }
+        .panel { display: none; background: #fff; border-radius: 0 10px 10px 10px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .panel.active { display: block; }
+        .filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+        .filter-bar select { padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+        .filter-bar .count { color: #666; font-size: 13px; margin-left: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #f5f7fa; padding: 10px 8px; text-align: left; font-weight: 600; border-bottom: 2px solid #e0e0e0; white-space: nowrap; position: sticky; top: 0; }
+        td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+        tr:hover td { background: #f8faff; }
+        .table-wrap { max-height: 500px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; }
+        .chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .chart-box { background: #fff; border-radius: 10px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .chart-box h3 { font-size: 15px; margin-bottom: 12px; color: #333; }
+        .last-update { font-size: 12px; color: rgba(255,255,255,0.7); }
+        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+        .status-pending { background: #fff3e0; color: #e65100; }
+        .status-transit { background: #e3f2fd; color: #1565c0; }
+        .loading { text-align: center; padding: 40px; color: #999; }
+        .empty { text-align: center; padding: 30px; color: #bbb; font-size: 14px; }
+        @media (max-width: 768px) { .chart-row { grid-template-columns: 1fr; } .header { flex-direction: column; align-items: flex-start; } .summary-cards { grid-template-columns: repeat(2,1fr); } }
+    </style>
+</head>
+<body>
+<div class="header">
+    <div>
+        <h1>零担订单可视化看板</h1>
+        <div class="last-update" id="lastUpdate">加载中...</div>
+    </div>
+    <div class="header-right">
+        <div class="selector-group">
+            <label>省份:</label>
+            <select id="provinceSelect" multiple size="1" onchange="onProvinceChange()"></select>
+        </div>
+        <div class="selector-group">
+            <label>网点:</label>
+            <select id="networkSelect" multiple size="1" onchange="onNetworkChange()"></select>
+        </div>
+        <button class="btn-refresh" onclick="refreshAll()" id="btnRefresh">刷新全部</button>
+    </div>
+</div>
+<div class="container">
+    <div class="summary-cards" id="summaryCards"></div>
+
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('pending')">待配载订单</button>
+        <button class="tab" onclick="switchTab('region')">省份统计</button>
+        <button class="tab" onclick="switchTab('today')">今日未签收</button>
+        <button class="tab" onclick="switchTab('tomorrow')">明日未签收</button>
+        <button class="tab" onclick="switchTab('sender')">发货省份订单</button>
+        <button class="tab" onclick="switchTab('weekly')">近7天趋势</button>
+    </div>
+
+    <div class="panel active" id="panel-pending">
+        <div class="filter-bar">
+            <select id="pendingProvinceFilter" onchange="renderPendingOrders()"><option value="全部">全部省份</option></select>
+            <span class="count" id="pendingCount"></span>
+        </div>
+        <div class="table-wrap"><table id="pendingTable"><thead><tr><th>订单号</th><th>收货区域</th><th>重量(kg)</th><th>仓库</th><th>下单时间</th><th>紧急标识</th><th>在途标识</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="panel" id="panel-region">
+        <div class="chart-row">
+            <div class="chart-box"><h3>各省份订单统计</h3><canvas id="regionChart"></canvas></div>
+            <div class="chart-box"><h3>省份明细</h3><div class="table-wrap" style="max-height:300px"><table id="regionDetailTable"><thead><tr><th>省份</th><th>订单数</th><th>重量(kg)</th></tr></thead><tbody></tbody></table></div></div>
+        </div>
+    </div>
+
+    <div class="panel" id="panel-today">
+        <div class="filter-bar">
+            <select id="todayProvinceFilter" onchange="renderTodayUnsigned()"><option value="全部">全部省份</option></select>
+            <span class="count" id="todayCount"></span>
+        </div>
+        <div class="table-wrap"><table id="todayTable"><thead><tr><th>订单号</th><th>收货方</th><th>电话</th><th>省</th><th>市</th><th>区/县</th><th>状态</th><th>收货时间</th><th>应当到货时间</th><th>重量(kg)</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="panel" id="panel-tomorrow">
+        <div class="filter-bar">
+            <select id="tomorrowProvinceFilter" onchange="renderTomorrowUnsigned()"><option value="全部">全部省份</option></select>
+            <span class="count" id="tomorrowCount"></span>
+        </div>
+        <div class="table-wrap"><table id="tomorrowTable"><thead><tr><th>订单号</th><th>收货方</th><th>电话</th><th>省</th><th>市</th><th>区/县</th><th>状态</th><th>收货时间</th><th>应当到货时间</th><th>重量(kg)</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="panel" id="panel-sender">
+        <div class="filter-bar">
+            <select id="senderProvinceFilter" onchange="renderSenderOrders()"><option value="全部">全部省份</option></select>
+            <span class="count" id="senderCount"></span>
+        </div>
+        <div class="table-wrap"><table id="senderTable"><thead><tr><th>订单号</th><th>发货地址</th><th>收货地址</th><th>重量(kg)</th><th>配载重量(kg)</th><th>仓库</th><th>下单时间</th><th>在途标识</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="panel" id="panel-weekly">
+        <div class="chart-box"><h3>近7天订单重量趋势 (kg)</h3><canvas id="weeklyChart"></canvas></div>
+    </div>
+</div>
+
+<script>
+let dashboardData = {};
+let allProvinces = [];
+let selectedProvinces = [];
+let selectedNetworks = [];
+let allNetworks = [];
+let weeklyChart = null;
+let regionChart = null;
+
+async function init() {
+    await loadConfig();
+    await loadDashboard();
+}
+
+async function loadConfig() {
+    try {
+        const [pResp, nResp] = await Promise.all([
+            fetch('/api/provinces').then(r => r.json()),
+            fetch('/api/networks').then(r => r.json())
+        ]);
+        allProvinces = pResp.all || [];
+        selectedProvinces = pResp.selected || [];
+        allNetworks = nResp.all || [];
+        selectedNetworks = nResp.selected || [];
+        renderSelectors();
+    } catch (e) { console.error('加载配置失败', e); }
+}
+
+function renderSelectors() {
+    const pSel = document.getElementById('provinceSelect');
+    pSel.innerHTML = allProvinces.map(p => `<option value="${p}" ${selectedProvinces.includes(p) ? 'selected' : ''}>${p}</option>`).join('');
+
+    const nSel = document.getElementById('networkSelect');
+    nSel.innerHTML = allNetworks.map(n => `<option value="${n}" ${selectedNetworks.includes(n) ? 'selected' : ''}>${n}</option>`).join('');
+}
+
+function getSelectedOptions(selectEl) {
+    return Array.from(selectEl.selectedOptions).map(o => o.value);
+}
+
+async function onProvinceChange() {
+    const provinces = getSelectedOptions(document.getElementById('provinceSelect'));
+    try {
+        await fetch('/api/provinces', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provinces })
+        });
+        selectedProvinces = provinces;
+    } catch (e) { console.error('更新省份配置失败', e); }
+}
+
+async function onNetworkChange() {
+    const networks = getSelectedOptions(document.getElementById('networkSelect'));
+    try {
+        await fetch('/api/networks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ networks })
+        });
+        selectedNetworks = networks;
+    } catch (e) { console.error('更新网点配置失败', e); }
+}
+
+async function refreshAll() {
+    const btn = document.getElementById('btnRefresh');
+    btn.disabled = true;
+    btn.textContent = '刷新中...';
+    try {
+        const provinces = getSelectedOptions(document.getElementById('provinceSelect'));
+        const networks = getSelectedOptions(document.getElementById('networkSelect'));
+        const resp = await fetch('/api/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provinces, networks })
+        });
+        const result = await resp.json();
+        if (result.success) {
+            selectedProvinces = result.provinces || provinces;
+            selectedNetworks = result.networks || networks;
+        }
+        await loadDashboard();
+    } catch (e) { console.error('刷新失败', e); }
+    btn.disabled = false;
+    btn.textContent = '刷新全部';
+}
+
+async function loadDashboard() {
+    try {
+        const resp = await fetch('/api/dashboard');
+        const result = await resp.json();
+        if (result.success) {
+            dashboardData = result.data;
+            document.getElementById('lastUpdate').textContent = '最后更新: ' + (result.data.last_update || result.server_time);
+            renderSummary();
+            renderPendingOrders();
+            renderRegionStats();
+            renderTodayUnsigned();
+            renderTomorrowUnsigned();
+            renderSenderOrders();
+            renderWeeklyChart();
+        }
+    } catch (e) { console.error('加载数据失败', e); }
+}
+
+function renderSummary() {
+    const manual = dashboardData.manual_query || {};
+    const region = dashboardData.region_stats || {};
+    const today = dashboardData.today_unsigned || {};
+    const tomorrow = dashboardData.tomorrow_unsigned || {};
+    const sender = dashboardData.sender_region_orders || {};
+    const cards = [
+        { label: '待配载订单', value: manual.total_count || 0, sub: `总重量 ${(manual.total_weight || 0).toLocaleString()} kg` },
+        { label: '今日未签收', value: today.unsigned_count || 0, sub: `${(today.total_orders || 0)} 单总计` },
+        { label: '明日未签收', value: tomorrow.unsigned_count || 0, sub: `${(tomorrow.total_orders || 0)} 单总计` },
+        { label: '发货省份订单', value: sender.total_count || 0, sub: `总重量 ${(sender.total_weight || 0).toLocaleString()} kg` },
+        { label: '省份总数', value: (region.region_details || []).length, sub: `总重量 ${(region.total_weight || 0).toLocaleString()} kg` }
+    ];
+    document.getElementById('summaryCards').innerHTML = cards.map(c =>
+        `<div class="card"><div class="label">${c.label}</div><div class="value">${c.value.toLocaleString()}</div><div class="sub">${c.sub}</div></div>`
+    ).join('');
+}
+
+function renderPendingOrders() {
+    const data = dashboardData.manual_query || {};
+    let orders = data.orders || [];
+    const filter = document.getElementById('pendingProvinceFilter');
+    const filterVal = filter ? filter.value : '全部';
+
+    const provinces = [...new Set(orders.map(o => o.region).filter(Boolean))].sort();
+    if (filter) {
+        const currentVal = filter.value;
+        filter.innerHTML = '<option value="全部">全部省份</option>' + provinces.map(p => `<option value="${p}" ${p === currentVal ? 'selected' : ''}>${p}</option>`).join('');
+    }
+
+    if (filterVal !== '全部') {
+        orders = orders.filter(o => o.region === filterVal);
+    }
+
+    document.getElementById('pendingCount').textContent = `共 ${orders.length} 条 / 总重 ${orders.reduce((s,o) => s + (o.weight||0), 0).toLocaleString()} kg`;
+
+    const tbody = document.querySelector('#pendingTable tbody');
+    if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+        return;
+    }
+    tbody.innerHTML = orders.map(o => `<tr>
+        <td>${o.order_no}</td><td>${o.region}</td><td>${(o.weight||0).toLocaleString()}</td>
+        <td>${o.warehouse}</td><td>${o.order_date || '-'}</td>
+        <td>${o.urgent_flag_custom || '-'}</td><td>${o.the_way_flag_custom || '-'}</td>
+    </tr>`).join('');
+}
+
+function renderRegionStats() {
+    const data = dashboardData.region_stats || {};
+    const details = data.region_details || [];
+
+    const tbody = document.querySelector('#regionDetailTable tbody');
+    tbody.innerHTML = details.map(d => `<tr><td>${d.region}</td><td>${d.count}</td><td>${(d.weight||0).toLocaleString()}</td></tr>`).join('');
+
+    if (regionChart) regionChart.destroy();
+    const ctx = document.getElementById('regionChart').getContext('2d');
+    regionChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: details.map(d => d.region),
+            datasets: [
+                { label: '订单数', data: details.map(d => d.count), backgroundColor: 'rgba(26,115,232,0.7)', yAxisID: 'y' },
+                { label: '重量(kg)', data: details.map(d => d.weight), backgroundColor: 'rgba(255,152,0,0.7)', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: true, position: 'left', title: { display: true, text: '订单数' } },
+                y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '重量(kg)' } }
+            }
+        }
+    });
+}
+
+function renderTodayUnsigned() {
+    const data = dashboardData.today_unsigned || {};
+    let orders = data.unsigned_orders || [];
+    const provinces = data.provinces || [];
+
+    const filter = document.getElementById('todayProvinceFilter');
+    const currentVal = filter ? filter.value : '全部';
+    if (filter) {
+        filter.innerHTML = '<option value="全部">全部省份</option>' + provinces.map(p => `<option value="${p}" ${p===currentVal?'selected':''}>${p}</option>`).join('');
+    }
+
+    if (currentVal !== '全部') {
+        orders = orders.filter(o => o.province === currentVal);
+    }
+
+    document.getElementById('todayCount').textContent = `未签收 ${orders.length} 条 / 总计 ${data.total_orders || 0} 单`;
+
+    const tbody = document.querySelector('#todayTable tbody');
+    if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="empty">暂无数据</td></tr>';
+        return;
+    }
+    tbody.innerHTML = orders.map(o => `<tr>
+        <td>${o.order_no}</td><td>${o.receive_name || '-'}</td><td>${o.receiver_phone || '-'}</td>
+        <td>${o.province || '-'}</td><td>${o.city || '-'}</td><td>${o.district || '-'}</td>
+        <td><span class="status-badge status-pending">${o.status || '-'}</span></td>
+        <td>${o.receive_time || '-'}</td><td>${o.delivery_date || '-'}</td>
+        <td>${(o.signed_weight || 0).toLocaleString()}</td>
+    </tr>`).join('');
+}
+
+function renderTomorrowUnsigned() {
+    const data = dashboardData.tomorrow_unsigned || {};
+    let orders = data.unsigned_orders || [];
+    const provinces = data.provinces || [];
+
+    const filter = document.getElementById('tomorrowProvinceFilter');
+    const currentVal = filter ? filter.value : '全部';
+    if (filter) {
+        filter.innerHTML = '<option value="全部">全部省份</option>' + provinces.map(p => `<option value="${p}" ${p===currentVal?'selected':''}>${p}</option>`).join('');
+    }
+
+    if (currentVal !== '全部') {
+        orders = orders.filter(o => o.province === currentVal);
+    }
+
+    document.getElementById('tomorrowCount').textContent = `未签收 ${orders.length} 条 / 总计 ${data.total_orders || 0} 单`;
+
+    const tbody = document.querySelector('#tomorrowTable tbody');
+    if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="empty">暂无数据</td></tr>';
+        return;
+    }
+    tbody.innerHTML = orders.map(o => `<tr>
+        <td>${o.order_no}</td><td>${o.receive_name || '-'}</td><td>${o.receiver_phone || '-'}</td>
+        <td>${o.province || '-'}</td><td>${o.city || '-'}</td><td>${o.district || '-'}</td>
+        <td><span class="status-badge status-pending">${o.status || '-'}</span></td>
+        <td>${o.receive_time || '-'}</td><td>${o.delivery_date || '-'}</td>
+        <td>${(o.signed_weight || 0).toLocaleString()}</td>
+    </tr>`).join('');
+}
+
+function renderSenderOrders() {
+    const data = dashboardData.sender_region_orders || {};
+    let orders = data.orders || [];
+
+    const provinces = [...new Set(orders.map(o => o.sender_region).filter(Boolean))].sort();
+    const filter = document.getElementById('senderProvinceFilter');
+    const currentVal = filter ? filter.value : '全部';
+    if (filter) {
+        filter.innerHTML = '<option value="全部">全部省份</option>' + provinces.map(p => `<option value="${p}" ${p===currentVal?'selected':''}>${p}</option>`).join('');
+    }
+
+    if (currentVal !== '全部') {
+        orders = orders.filter(o => o.sender_region === currentVal);
+    }
+
+    document.getElementById('senderCount').textContent = `共 ${orders.length} 条 / 总重 ${orders.reduce((s,o) => s + (o.weight||0), 0).toLocaleString()} kg`;
+
+    const tbody = document.querySelector('#senderTable tbody');
+    if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+        return;
+    }
+    tbody.innerHTML = orders.map(o => `<tr>
+        <td>${o.order_no}</td><td>${o.sender_region || '-'}</td><td>${o.receive_region || '-'}</td>
+        <td>${(o.weight||0).toLocaleString()}</td><td>${(o.stowage_weight||0).toLocaleString()}</td>
+        <td>${o.warehouse || '-'}</td><td>${o.create_time || '-'}</td><td>${o.on_the_way || '-'}</td>
+    </tr>`).join('');
+}
+
+function renderWeeklyChart() {
+    const data = dashboardData.weekly_weight || {};
+    const labels = data.labels || [];
+    const values = data.data || [];
+
+    if (weeklyChart) weeklyChart.destroy();
+    const ctx = document.getElementById('weeklyChart').getContext('2d');
+    weeklyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{ label: '订单总重量(kg)', data: values, borderColor: '#1a73e8', backgroundColor: 'rgba(26,115,232,0.1)', fill: true, tension: 0.3, pointRadius: 5 }]
+        },
+        options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true, title: { display: true, text: '重量(kg)' } } }
+        }
+    });
+}
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + tab).classList.add('active');
+    event.target.classList.add('active');
+}
+
+init();
+</script>
+</body>
+</html>
