@@ -235,6 +235,59 @@ def get_region_stats_data(token):
     }
 
 
+def _fetch_region_orders(token, region):
+    """并行获取单个省份的待配载订单（线程安全）"""
+    orders = query_orders(token, region)
+    total_weight = sum(float(o.get("total_weight", 0)) for o in orders)
+    parsed_orders = [{
+        "order_no": o.get("source_order_no", "无"),
+        "region": o.get("receive_region_code_show", "无"),
+        "weight": float(o.get("total_weight", 0)),
+        "warehouse": o.get("all_send_storage_code_show", "无"),
+        "order_date": format_time(o.get("order_date")),
+        "urgent_flag_custom": o.get("urgent_flag_custom", "无"),
+        "the_way_flag_custom": o.get("the_way_flag_custom", "无")
+    } for o in orders]
+    return {
+        "region": region,
+        "count": len(orders),
+        "weight": round(total_weight, 2),
+        "orders": parsed_orders
+    }
+
+
+def get_pending_orders_unified(token):
+    """统一获取待配载数据：合并manual_query + auto_monitor + region_stats，每个省份只查一次API"""
+    with ThreadPoolExecutor(max_workers=len(AUTO_REGIONS)) as executor:
+        futures = {executor.submit(_fetch_region_orders, token, r): r for r in AUTO_REGIONS}
+        region_results = {}
+        for future in as_completed(futures):
+            region = futures[future]
+            try:
+                region_results[region] = future.result()
+            except Exception as e:
+                print(f"查询省份 {region} 失败: {e}")
+                region_results[region] = {"region": region, "count": 0, "weight": 0, "orders": []}
+
+    # 按 AUTO_REGIONS 顺序组装结果
+    region_stats = [region_results[r] for r in AUTO_REGIONS]
+    all_orders = []
+    region_details = []
+    for r in region_stats:
+        region_details.append({"region": r["region"], "count": r["count"], "weight": r["weight"]})
+        all_orders.extend(r["orders"])
+
+    total_count = sum(r["count"] for r in region_stats)
+    total_weight = sum(r["weight"] for r in region_stats)
+
+    manual_query = {"orders": all_orders, "total_count": total_count, "total_weight": round(total_weight, 2)}
+    auto_monitor = {"regions": [{"region": r["region"], "count": r["count"], "weight": r["weight"]} for r in region_stats],
+                    "total_count": total_count, "total_weight": round(total_weight, 2)}
+    region_stats_data = {"region_details": region_details, "orders": all_orders, "total_count": total_count, "total_weight": round(total_weight, 2)}
+
+    return manual_query, auto_monitor, region_stats_data
+
+
 def get_today_utc_range():
     """获取今日北京时间范围的UTC时间"""
     bj_tz = timezone(timedelta(hours=8))
@@ -381,35 +434,47 @@ def query_orders_by_sender_region(token, region):
         return []
 
 
+def _fetch_sender_region_orders(token, region):
+    """并行获取单个发货省份的待配载订单（线程安全）"""
+    orders = query_orders_by_sender_region(token, region)
+    total_weight = sum(float(o.get("total_weight", 0)) for o in orders)
+    parsed_orders = [{
+        "order_no": o.get("source_order_no", "无"),
+        "sender_region": o.get("send_region_code_show", "无"),
+        "receive_region": o.get("receive_region_code_show", "无"),
+        "weight": float(o.get("total_weight", 0)),
+        "stowage_weight": float(o.get("stowage_all_weight", 0) or 0),
+        "warehouse": o.get("all_send_storage_code_show", "无"),
+        "create_time": format_time(o.get("order_date")),
+        "on_the_way": o.get("the_way_flag_custom", "无")
+    } for o in orders]
+    return {"region": region, "count": len(orders), "weight": round(total_weight, 2), "orders": parsed_orders}
+
+
 def get_sender_region_orders_data(token):
-    """获取发货地址为配置省份的待配载订单"""
-    regions = AUTO_REGIONS.copy()  # 使用配置的省份
-    all_orders = []
+    """获取发货地址为配置省份的待配载订单（并行查询）"""
+    regions = AUTO_REGIONS.copy()
+    with ThreadPoolExecutor(max_workers=len(regions)) as executor:
+        futures = {executor.submit(_fetch_sender_region_orders, token, r): r for r in regions}
+        region_results = {}
+        for future in as_completed(futures):
+            region = futures[future]
+            try:
+                region_results[region] = future.result()
+            except Exception as e:
+                print(f"查询发货省份 {region} 失败: {e}")
+                region_results[region] = {"region": region, "count": 0, "weight": 0, "orders": []}
+
     region_details = []
-    
-    for region in regions:
-        orders = query_orders_by_sender_region(token, region)
-        total_weight = sum(float(o.get("total_weight", 0)) for o in orders)
-        region_details.append({
-            "region": region,
-            "count": len(orders),
-            "weight": round(total_weight, 2)
-        })
-        for o in orders:
-            all_orders.append({
-                "order_no": o.get("source_order_no", "无"),
-                "sender_region": o.get("send_region_code_show", "无"),  # 发货地址
-                "receive_region": o.get("receive_region_code_show", "无"),  # 收货地址
-                "weight": float(o.get("total_weight", 0)),
-                "stowage_weight": float(o.get("stowage_all_weight", 0) or 0),  # 配载重量
-                "warehouse": o.get("all_send_storage_code_show", "无"),
-                "create_time": format_time(o.get("order_date")),
-                "on_the_way": o.get("the_way_flag_custom", "无")
-            })
-    
-    total_count = sum(r["count"] for r in region_details)
-    total_weight = sum(r["weight"] for r in region_details)
-    
+    all_orders = []
+    for r in regions:
+        result = region_results[r]
+        region_details.append({"region": result["region"], "count": result["count"], "weight": result["weight"]})
+        all_orders.extend(result["orders"])
+
+    total_count = sum(rd["count"] for rd in region_details)
+    total_weight = sum(rd["weight"] for rd in region_details)
+
     return {
         "region_details": region_details,
         "orders": all_orders,
@@ -686,77 +751,56 @@ def get_kpi_penalty_data(token):
     }
 
 
-def get_weekly_weight_data(token):
-    """获取近7天每天的订单总重量数据（不包括今天）"""
+def _fetch_daily_weight(token, bj_date, network_ids):
+    """并行获取单天的订单重量（线程安全）"""
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json;charset=UTF-8",
         "User-Agent": "Mozilla/5.0"
     }
+    day_start_utc = datetime(bj_date.year, bj_date.month, bj_date.day, 0, 0, 0) - timedelta(hours=8)
+    day_end_utc = datetime(bj_date.year, bj_date.month, bj_date.day, 23, 59, 59) - timedelta(hours=8)
+    payload = {
+        "debugFlag": False, "developmentSystemId": None, "direction": "DESC",
+        "dynamicFormCode": "stowage_sign_receipt", "fromClientType": "pc",
+        "number": 0, "property": "id",
+        "rules": [
+            {"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
+                day_start_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                day_end_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            ]},
+            {"field": "k_contract_line_a.network", "option": "IN", "values": network_ids}
+        ],
+        "size": 999, "sorts": [], "specialConditions": []
+    }
+    resp = requests.post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
+    resp_data = resp.json()
+    total_sum_data = resp_data.get("totalSumData", {})
+    return round(float(total_sum_data.get("stowage_all_weight", 0) or 0), 2) if total_sum_data else 0
 
-    # 使用北京时间计算日期
+
+def get_weekly_weight_data(token):
+    """获取近7天每天的订单总重量数据（并行查询）"""
     bj_tz = timezone(timedelta(hours=8))
     today_bj = datetime.now(bj_tz)
-
-    # 近7天数据 - 从7天前到昨天（不包括今天）
-    # 例如：今天是4月17日，则显示4月10日到4月16日（从左到右日期递增）
-    date_list = []
-    for i in range(7, 0, -1):  # 从7倒序到1：7天前, 6天前, ..., 昨天
-        bj_date = (today_bj - timedelta(days=i)).date()
-        date_list.append(bj_date)
-
+    date_list = [(today_bj - timedelta(days=i)).date() for i in range(7, 0, -1)]
     labels = [d.strftime("%m-%d") for d in date_list]
-    print(f"[{datetime.now()}] 近7天日期范围: {labels[0]} 至 {labels[-1]}")
-
-    # 获取网点ID列表
     network_ids = [ALL_NETWORKS[n] for n in SELECTED_NETWORKS if n in ALL_NETWORKS]
 
-    # 每天分别查询
-    data = []
-    for bj_date in date_list:
+    with ThreadPoolExecutor(max_workers=7) as executor:
+        futures = {executor.submit(_fetch_daily_weight, token, d, network_ids): d for d in date_list}
+        results = {}
+        for future in as_completed(futures):
+            d = futures[future]
+            try:
+                results[d] = future.result()
+            except Exception as e:
+                print(f"查询失败 {d.strftime('%m-%d')}: {e}")
+                results[d] = 0
 
-        # 北京时间当天0点 = UTC前一天16:00
-        day_start_utc = datetime(bj_date.year, bj_date.month, bj_date.day, 0, 0, 0) - timedelta(hours=8)
-        # 北京时间当天23:59:59 = UTC当天15:59:59
-        day_end_utc = datetime(bj_date.year, bj_date.month, bj_date.day, 23, 59, 59) - timedelta(hours=8)
-
-        payload = {
-            "debugFlag": False,
-            "developmentSystemId": None,
-            "direction": "DESC",
-            "dynamicFormCode": "stowage_sign_receipt",
-            "fromClientType": "pc",
-            "number": 0,
-            "property": "id",
-            "rules": [
-                {"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
-                    day_start_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                    day_end_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                ]},
-                {"field": "k_contract_line_a.network", "option": "IN", "values": network_ids}
-            ],
-            "size": 999,
-            "sorts": [],
-            "specialConditions": []
-        }
-
-        try:
-            resp = requests.post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
-            resp_data = resp.json()
-            total_sum_data = resp_data.get("totalSumData", {})
-            daily_weight = 0
-            if total_sum_data:
-                daily_weight = float(total_sum_data.get("stowage_all_weight", 0) or 0)
-            data.append(round(daily_weight, 2))
-            print(f"[{datetime.now()}] {bj_date.strftime('%m-%d')}: {daily_weight} kg")
-        except Exception as e:
-            print(f"查询失败 {bj_date.strftime('%m-%d')}: {e}")
-            data.append(0)
-
-    return {
-        "labels": labels,
-        "data": data
-    }
+    data = [results[d] for d in date_list]
+    print(f"[{datetime.now()}] 近7天重量: {dict(zip(labels, data))}")
+    return {"labels": labels, "data": data}
 
 
 def query_weekly_orders_by_day(token):
@@ -846,28 +890,40 @@ def refresh_all_data():
         print("登录失败，跳过本次刷新")
         return False
     try:
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            # 并行提交所有查询任务（KPI单独刷新，不在此处加载）
-            future_to_key = {
-                executor.submit(get_manual_query_data, token): "manual_query",
-                executor.submit(get_auto_monitor_data, token): "auto_monitor",
-                executor.submit(get_region_stats_data, token): "region_stats",
-                executor.submit(get_today_unsigned_data, token): "today_unsigned",
-                executor.submit(get_tomorrow_unsigned_data, token): "tomorrow_unsigned",
-                executor.submit(get_weekly_weight_data, token): "weekly_weight",
-                executor.submit(get_sender_region_orders_data, token): "sender_region_orders",
-                executor.submit(get_today_orders_data, token): "today_orders",
-            }
+        # 并行执行：统一查询(3合1) + 未签收 + 周趋势 + 发货省份 + 今日订单
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_unified = executor.submit(get_pending_orders_unified, token)
+            future_today_unsigned = executor.submit(get_today_unsigned_data, token)
+            future_tomorrow_unsigned = executor.submit(get_tomorrow_unsigned_data, token)
+            future_weekly = executor.submit(get_weekly_weight_data, token)
+            future_sender = executor.submit(get_sender_region_orders_data, token)
+            future_today_orders = executor.submit(get_today_orders_data, token)
 
             # 收集结果
             results = {}
-            for future in as_completed(future_to_key):
-                key = future_to_key[future]
+            try:
+                manual_query, auto_monitor, region_stats = future_unified.result()
+                results["manual_query"] = manual_query
+                results["auto_monitor"] = auto_monitor
+                results["region_stats"] = region_stats
+            except Exception as e:
+                print(f"统一查询失败: {e}")
+                results["manual_query"] = {}
+                results["auto_monitor"] = {"regions": [], "total_count": 0, "total_weight": 0}
+                results["region_stats"] = {}
+
+            for future, key in [
+                (future_today_unsigned, "today_unsigned"),
+                (future_tomorrow_unsigned, "tomorrow_unsigned"),
+                (future_weekly, "weekly_weight"),
+                (future_sender, "sender_region_orders"),
+                (future_today_orders, "today_orders"),
+            ]:
                 try:
                     results[key] = future.result()
                 except Exception as e:
                     print(f"查询 {key} 失败: {e}")
-                    results[key] = {} if key != "auto_monitor" else {"regions": [], "total_count": 0, "total_weight": 0}
+                    results[key] = {}
 
         with cache_lock:
             cache_data.update(results)
@@ -888,24 +944,29 @@ def refresh_pending_orders():
         print("登录失败，跳过本次刷新")
         return False
     try:
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            # 并行刷新待配载相关数据
-            future_to_key = {
-                executor.submit(get_manual_query_data, token): "manual_query",
-                executor.submit(get_auto_monitor_data, token): "auto_monitor",
-                executor.submit(get_region_stats_data, token): "region_stats",
-                executor.submit(get_sender_region_orders_data, token): "sender_region_orders",
-                executor.submit(get_today_orders_data, token): "today_orders",
-            }
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future_unified = executor.submit(get_pending_orders_unified, token)
+            future_sender = executor.submit(get_sender_region_orders_data, token)
+            future_today_orders = executor.submit(get_today_orders_data, token)
 
             results = {}
-            for future in as_completed(future_to_key):
-                key = future_to_key[future]
+            try:
+                manual_query, auto_monitor, region_stats = future_unified.result()
+                results["manual_query"] = manual_query
+                results["auto_monitor"] = auto_monitor
+                results["region_stats"] = region_stats
+            except Exception as e:
+                print(f"统一查询失败: {e}")
+                results["manual_query"] = {}
+                results["auto_monitor"] = {"regions": [], "total_count": 0, "total_weight": 0}
+                results["region_stats"] = {}
+
+            for future, key in [(future_sender, "sender_region_orders"), (future_today_orders, "today_orders")]:
                 try:
                     results[key] = future.result()
                 except Exception as e:
                     print(f"查询 {key} 失败: {e}")
-                    results[key] = {"regions": [], "total_count": 0, "total_weight": 0} if key == "auto_monitor" else {}
+                    results[key] = {}
 
         with cache_lock:
             cache_data.update(results)
@@ -1065,13 +1126,21 @@ def refresh_overview():
 
 @app.route('/api/refresh/pending-detail', methods=['POST'])
 def refresh_pending_detail():
-    """单独刷新待配载订单 + 分省统计"""
-    result = _login_and_refresh({
-        "manual_query": get_manual_query_data,
-        "auto_monitor": get_auto_monitor_data,
-        "region_stats": get_region_stats_data,
-    })
-    return jsonify(result)
+    """单独刷新待配载订单 + 分省统计（使用统一查询优化）"""
+    global cache_data
+    token = login()
+    if not token:
+        return jsonify({"success": False, "message": "登录失败"})
+    try:
+        manual_query, auto_monitor, region_stats = get_pending_orders_unified(token)
+        with cache_lock:
+            cache_data["manual_query"] = manual_query
+            cache_data["auto_monitor"] = auto_monitor
+            cache_data["region_stats"] = region_stats
+            cache_data["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return jsonify({"success": True, "message": "刷新成功"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 
 @app.route('/api/refresh/sender-region', methods=['POST'])
@@ -1160,17 +1229,18 @@ def get_manual_orders():
 
 @app.route('/api/refresh-manual', methods=['POST'])
 def refresh_manual_orders():
-    """手动刷新待配载订单数据"""
+    """手动刷新待配载订单数据（使用统一查询优化）"""
+    global cache_data
     token = login()
     if not token:
         return jsonify({"success": False, "message": "登录失败"})
     try:
-        data = get_manual_query_data(token)
+        manual_query, auto_monitor, region_stats = get_pending_orders_unified(token)
         with cache_lock:
-            cache_data["manual_query"] = data
-            cache_data["auto_monitor"] = get_auto_monitor_data(token)
-            cache_data["region_stats"] = get_region_stats_data(token)
-        return jsonify({"success": True, "data": data})
+            cache_data["manual_query"] = manual_query
+            cache_data["auto_monitor"] = auto_monitor
+            cache_data["region_stats"] = region_stats
+        return jsonify({"success": True, "data": manual_query})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
 

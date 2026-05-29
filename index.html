@@ -90,6 +90,15 @@
             height: 40px;
             animation: spin 1s linear infinite;
         }
+        .loading-spinner-small {
+            border: 2px solid #e2e8f0;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+        }
         @keyframes spin { 100% { transform: rotate(360deg); } }
         .table-container { max-height: 320px; overflow-y: auto; }
         .table-container::-webkit-scrollbar { width: 8px; }
@@ -735,11 +744,15 @@
         </footer>
     </main>
 
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-black/20 flex items-center justify-center z-50" style="display: flex;">
-        <div class="bg-white p-8 rounded-xl shadow-lg text-center">
-            <div class="loading-spinner mx-auto mb-4"></div>
-            <p class="text-slate-600">正在加载数据...</p>
+    <!-- 右上角刷新状态指示器（非阻塞） -->
+    <div id="refreshStatus" class="fixed top-4 right-4 z-50 transition-all duration-300" style="display: none;">
+        <div class="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200 px-4 py-3 flex items-center gap-3 min-w-[200px]">
+            <div class="loading-spinner-small"></div>
+            <div class="flex-1">
+                <p class="text-sm font-medium text-slate-700" id="refreshStatusText">刷新中...</p>
+                <p class="text-xs text-slate-400 mt-0.5" id="refreshStatusDetail">正在加载数据</p>
+            </div>
+            <div id="refreshProgress" class="text-xs font-mono text-blue-600 bg-blue-50 px-2 py-1 rounded-md hidden">0%</div>
         </div>
     </div>
 
@@ -808,6 +821,42 @@
             return formatNumber(parseFloat(tons.toFixed(10)));
         }
 
+        // ==================== 刷新状态指示器 ====================
+        let refreshTimer = null;
+        let refreshStartTime = null;
+        function showRefreshStatus(text, detail) {
+            const el = document.getElementById('refreshStatus');
+            const textEl = document.getElementById('refreshStatusText');
+            const detailEl = document.getElementById('refreshStatusDetail');
+            const progressEl = document.getElementById('refreshProgress');
+            textEl.textContent = text || '刷新中...';
+            detailEl.textContent = detail || '正在加载数据';
+            progressEl.classList.add('hidden');
+            el.style.display = 'block';
+            refreshStartTime = Date.now();
+            // 更新耗时显示
+            clearInterval(refreshTimer);
+            refreshTimer = setInterval(() => {
+                const elapsed = ((Date.now() - refreshStartTime) / 1000).toFixed(1);
+                detailEl.textContent = `已耗时 ${elapsed}s`;
+            }, 100);
+        }
+        function updateRefreshProgress(current, total) {
+            const progressEl = document.getElementById('refreshProgress');
+            const pct = Math.round((current / total) * 100);
+            progressEl.textContent = `${pct}%`;
+            progressEl.classList.remove('hidden');
+        }
+        function hideRefreshStatus() {
+            clearInterval(refreshTimer);
+            const el = document.getElementById('refreshStatus');
+            // 先显示完成状态，然后淡出
+            const detailEl = document.getElementById('refreshStatusDetail');
+            const elapsed = ((Date.now() - refreshStartTime) / 1000).toFixed(1);
+            detailEl.textContent = `完成，耗时 ${elapsed}s`;
+            setTimeout(() => { el.style.display = 'none'; }, 1500);
+        }
+
         async function fetchDashboard() {
             try {
                 const resp = await fetch('/api/dashboard');
@@ -828,20 +877,16 @@
                         renderProvinceCheckboxes();
                     }
                 }
-                // 隐藏加载状态
-                document.getElementById('loadingOverlay').style.display = 'none';
             } catch (err) {
                 console.error('获取数据失败:', err);
-                document.getElementById('loadingOverlay').querySelector('p').textContent = '数据加载失败，请刷新页面';
             }
         }
 
         async function handleRefresh() {
-            const overlay = document.getElementById('loadingOverlay');
             const btn = document.getElementById('refreshBtn');
             const icon = document.getElementById('refreshIcon');
 
-            overlay.style.display = 'flex';
+            showRefreshStatus('全局刷新中', '正在同步配置并刷新数据...');
             btn.disabled = true;
             icon.classList.add('animate-spin');
 
@@ -849,14 +894,14 @@
                 // 先同步当前省份和网点配置到后端，再全局刷新
                 const provinces = Array.from(selectedProvincesSet);
                 const networks = Array.from(selectedNetworksSet);
-                
+
                 const refreshResp = await fetch('/api/refresh', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ provinces, networks })
                 });
                 const refreshResult = await refreshResp.json();
-                
+
                 if (refreshResult.success) {
                     // 同步后端返回的最新配置
                     if (refreshResult.provinces) {
@@ -876,7 +921,7 @@
             } catch (err) {
                 console.error('刷新失败:', err);
             } finally {
-                overlay.style.display = 'none';
+                hideRefreshStatus();
                 btn.disabled = false;
                 icon.classList.remove('animate-spin');
             }
@@ -891,12 +936,20 @@
                 'weekly': 'refreshWeeklyBtn',
                 'today-orders': 'refreshTodayOrdersBtn',
             };
+            const nameMap = {
+                'overview': '概览卡片',
+                'pending-detail': '待配载订单',
+                'sender-region': '发货省份',
+                'weekly': '近7天趋势',
+                'today-orders': '今日订单',
+            };
             const btnId = btnMap[module];
             const btn = document.getElementById(btnId);
             if (!btn) return;
 
             btn.disabled = true;
             btn.classList.add('spinning');
+            showRefreshStatus(`刷新${nameMap[module] || module}`, '正在获取最新数据...');
 
             try {
                 const resp = await fetch(`/api/refresh/${module}`, { method: 'POST' });
@@ -917,6 +970,7 @@
             } catch (err) {
                 console.error(`刷新 ${module} 异常:`, err);
             } finally {
+                hideRefreshStatus();
                 btn.disabled = false;
                 btn.classList.remove('spinning');
             }
@@ -1719,7 +1773,9 @@
         });
 
         // 初始加载
+        showRefreshStatus('首次加载', '正在从服务器获取数据...');
         fetchDashboard().then(() => {
+            hideRefreshStatus();
             // KPI懒加载：首次加载后自动获取KPI数据
             setTimeout(() => handleRefreshKpi(), 1000);
         });
