@@ -1179,6 +1179,67 @@ def refresh_today_orders():
     return jsonify(result)
 
 
+def search_order_by_no(token, order_no):
+    """通过订单号查询配载单明细"""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json;charset=UTF-8",
+        "User-Agent": "Mozilla/5.0"
+    }
+    payload = {
+        "direction": "DESC",
+        "property": "id",
+        "fromClientType": "pc",
+        "number": 0,
+        "dynamicFormCode": "stowage_sign_receipt",
+        "rules": [
+            {"field": "source_order_no", "option": "EQ", "values": [order_no]}
+        ],
+        "size": 100,
+        "sorts": [{"property": "order_date", "direction": "DESC"}],
+        "specialConditions": []
+    }
+    resp = requests.post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=20)
+    return resp.json().get("content", [])
+
+
+@app.route('/api/search-order')
+def search_order():
+    """根据订单号搜索配载单明细"""
+    order_no = request.args.get('order_no', '').strip()
+    if not order_no:
+        return jsonify({"success": False, "message": "请输入订单号"})
+    token = login()
+    if not token:
+        return jsonify({"success": False, "message": "登录失败"})
+    try:
+        items = search_order_by_no(token, order_no)
+        orders = []
+        for o in items:
+            orders.append({
+                "order_no": o.get("source_order_no", ""),
+                "receive_name": o.get("receive_name", ""),
+                "receiver_phone": o.get("receiver_phone", ""),
+                "contact_person": o.get("receiver_name", "") or o.get("receiver", ""),
+                "customer_group": o.get("exe_pur_order_b", {}).get("customer_group", ""),
+                "driver": o.get("carrier_name", ""),
+                "license_plate": o.get("plate_no", ""),
+                "province": o.get("province_id_show", ""),
+                "city": o.get("city_id_show", ""),
+                "district": o.get("receive_district_code_show", ""),
+                "detailed_address": o.get("detailed_address", "") or o.get("receive_address", ""),
+                "status": o.get("status_dk_show", ""),
+                "stowage_weight": float(o.get("stowage_all_weight", 0) or 0),
+                "delivery_date": format_time(o.get("delivery_date")),
+                "receive_time": format_time(o.get("receive_time")),
+                "order_date": format_time(o.get("exe_pur_order_b", {}).get("order_date", "")),
+                "network": o.get("k_contract_line_a", {}).get("network_show", ""),
+            })
+        return jsonify({"success": True, "data": orders, "total": len(orders)})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+
+
 @app.route('/api/weekly-orders', methods=['POST'])
 def query_weekly_orders():
     """手动查询近7天订单详情"""
@@ -1426,7 +1487,7 @@ if __name__ == '__main__':
     browser_thread.start()
 
     print("=" * 50)
-    print("   订单可视化看板 - 已启动")
+    print("   王友小助手 - 已启动")
     print("   正在打开浏览器...")
     print("   按 Ctrl+C 停止服务")
     print("=" * 50)
