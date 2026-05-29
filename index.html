@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>订单可视化看板</title>
+    <title>王友小助手</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
@@ -273,14 +273,24 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
                             </svg>
                         </span>
-                        订单可视化看板
+                        王友小助手
                     </h1>
                     <p class="text-slate-500 mt-1.5 text-sm">实时监控订单状态与配送情况</p>
                 </div>
-                <div class="flex items-center gap-6">
+                <div class="flex items-center gap-3">
                     <div class="text-right bg-slate-50 px-4 py-2 rounded-lg border border-slate-100">
                         <p class="text-xs text-slate-400 uppercase tracking-wide">最后更新</p>
                         <p class="text-sm font-semibold text-slate-700" id="lastUpdate">--:--:--</p>
+                    </div>
+                    <div class="relative">
+                        <input type="text" id="searchOrderInput" placeholder="输入订单号..."
+                            class="w-44 px-4 py-2.5 pr-10 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                            onkeydown="if(event.key==='Enter') handleSearchOrder()">
+                        <button onclick="handleSearchOrder()" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-blue-600 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                        </button>
                     </div>
                     <button onclick="handleRefresh()" id="refreshBtn" class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all shadow-md hover:shadow-lg font-medium">
                         <svg class="w-4 h-4" id="refreshIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -630,6 +640,11 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                             </svg>
                         </button>
+                        <button onclick="toggleKpiTableCollapse()" id="kpiCollapseBtn" class="module-refresh-btn" title="折叠/展开表格">
+                            <svg class="w-4 h-4 kpi-collapse-icon transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
                         <span class="px-3 py-1 bg-rose-100 text-rose-600 text-sm rounded-full" id="kpiBadge">--</span>
                     </div>
                 </div>
@@ -668,27 +683,52 @@
                         </div>
                     </div>
                 </div>
+                <!-- 可折叠区域 -->
+                <div id="kpiTableSection" class="transition-all duration-300 overflow-hidden" style="max-height: 2000px;">
                 <!-- 切换查看不同周期详情 -->
                 <div class="flex gap-2 mb-3">
                     <button class="filter-btn active" id="kpiTabPrev" onclick="switchKpiTab('previous')">上一周期</button>
                     <button class="filter-btn" id="kpiTabCur" onclick="switchKpiTab('current')">当前周期</button>
                 </div>
-                <!-- KPI处罚明细表 -->
+                                <!-- KPI搜索框 -->
+                <div class="mb-3">
+                    <div class="relative">
+                        <input type="text" id="kpiSearchInput"
+                            placeholder="输入订单号/异常编号/司机/车牌号搜索..."
+                            class="w-full px-4 py-2 pr-10 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent transition-all"
+                            oninput="filterKpiTable()">
+                        <svg class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </div>
+                </div>
+                <!-- KPI合同筛选 -->
+                <div class="mb-3" id="kpiContractFilterSection" style="display: none;">
+                    <div class="flex flex-wrap items-center gap-1.5" id="kpiContractBtns"></div>
+                </div>
+<!-- KPI处罚明细表 -->
                 <div class="table-container" style="max-height: 400px; overflow-y: auto;">
                     <table class="w-full text-sm">
                         <thead class="sticky top-0 bg-slate-50">
                             <tr class="text-left text-slate-500 text-xs uppercase">
-                                <th class="py-2 pr-3">日期</th>
-                                <th class="py-2 pr-3">关联合同</th>
+                                <th class="py-2 pr-3">异常编号</th>
                                 <th class="py-2 pr-3">订单号</th>
+                                <th class="py-2 pr-3">运营商</th>
+                                <th class="py-2 pr-3">司机</th>
+                                <th class="py-2 pr-3">车牌号</th>
                                 <th class="py-2 pr-3">子类</th>
-                                <th class="py-2 pr-3">客户</th>
+                                <th class="py-2 pr-3">问题描述</th>
                                 <th class="py-2 pr-3">扣分</th>
-                                <th class="py-2">问题描述</th>
+                                <th class="py-2 pr-3">日期</th>
+                                <th class="py-2 pr-3">合同</th>
+                                <th class="py-2 pr-3">客户</th>
+                                <th class="py-2 pr-3">发货区域</th>
+                                <th class="py-2">收货区域</th>
                             </tr>
                         </thead>
                         <tbody id="kpiOrderTable"></tbody>
                     </table>
+                </div>
                 </div>
             </div>
 
@@ -740,7 +780,7 @@
 
         <!-- 页脚 -->
         <footer class="mt-8 text-center text-sm text-slate-400">
-            <p>订单可视化看板 · 数据每5分钟自动更新</p>
+            <p>王友小助手 · 数据每5分钟自动更新</p>
         </footer>
     </main>
 
@@ -786,6 +826,23 @@
             </div>
             <div id="todayOrdersContent" class="p-4 overflow-y-auto max-h-[80vh]">
                 <div class="text-center py-12 text-slate-400">点击查询按钮加载数据...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 订单搜索结果弹窗 -->
+    <div id="searchOrderModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden m-4">
+            <div class="flex items-center justify-between p-4 border-b bg-emerald-50">
+                <h3 class="text-lg font-semibold text-emerald-800" id="searchModalTitle">订单查询结果</h3>
+                <button onclick="closeSearchModal()" class="p-2 hover:bg-emerald-100 rounded-lg">
+                    <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="searchOrderContent" class="p-4 overflow-y-auto max-h-[80vh]">
+                <div class="text-center py-12 text-slate-400">输入订单号进行查询...</div>
             </div>
         </div>
     </div>
@@ -1475,6 +1532,9 @@
 
         let kpiCurrentTab = 'previous';
         let kpiData = null;
+        let kpiContractFilterSet = new Set(); // 空Set = 全选状态
+        let kpiContractAllSelected = true;
+        let kpiTableCollapsed = false;
 
         function updateKpiPenalty(data) {
             kpiData = data;
@@ -1512,34 +1572,147 @@
             renderKpiTable(tab);
         }
 
+        function filterKpiTable() {
+            renderKpiTable(kpiCurrentTab);
+        }
+
         function renderKpiTable(tab) {
             const tbody = document.getElementById('kpiOrderTable');
             if (!kpiData) {
-                tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-400">暂无数据</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" class="py-8 text-center text-slate-400">暂无数据</td></tr>';
                 return;
             }
 
             const periodData = tab === 'previous' ? kpiData.previous_period : kpiData.current_period;
-            const orders = periodData.orders || [];
+            let orders = periodData.orders || [];
+
+            // 提取所有合同并构建筛选按钮
+            const allContracts = [...new Set(orders.map(o => o.contract || '-'))].sort();
+            buildKpiContractFilter(allContracts);
+
+            // 关键词搜索过滤
+            const searchInput = document.getElementById('kpiSearchInput');
+            const keyword = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            if (keyword) {
+                orders = orders.filter(o =>
+                    (o.order_no || '').toLowerCase().includes(keyword) ||
+                    (o.exception_no || '').toLowerCase().includes(keyword) ||
+                    (o.driver || '').toLowerCase().includes(keyword) ||
+                    (o.license_plate || '').toLowerCase().includes(keyword) ||
+                    (o.carrier || '').toLowerCase().includes(keyword) ||
+                    (o.customer || '').toLowerCase().includes(keyword) ||
+                    (o.contract || '').toLowerCase().includes(keyword) ||
+                    (o.description || '').toLowerCase().includes(keyword)
+                );
+            }
+
+            // 合同筛选过滤
+            if (!kpiContractAllSelected && kpiContractFilterSet.size > 0) {
+                orders = orders.filter(o => kpiContractFilterSet.has(o.contract || '-'));
+            }
 
             if (orders.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-400">该周期暂无KPI处罚记录</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" class="py-8 text-center text-slate-400">该周期暂无KPI处罚记录</td></tr>';
                 return;
             }
 
             tbody.innerHTML = orders.map(o => `
                 <tr class="border-b border-slate-100 hover:bg-slate-50">
+                    <td class="py-2 pr-3 font-mono text-xs text-slate-500">${o.exception_no || '-'}</td>
+                    <td class="py-2 pr-3 font-mono text-xs">${o.order_no || '-'}</td>
+                    <td class="py-2 pr-3 text-xs">${o.carrier || '-'}</td>
+                    <td class="py-2 pr-3 text-xs">${o.driver || '-'}</td>
+                    <td class="py-2 pr-3 text-xs">${o.license_plate || '-'}</td>
+                    <td class="py-2 pr-3"><span class="px-2 py-0.5 text-xs rounded ${getSubclassBadgeClass(o.subclass)}">${o.subclass || '-'}</span></td>
+                    <td class="py-2 text-xs text-slate-600" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(o.description || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')}">${o.description || '-'}</td>
+                    <td class="py-2 pr-3"><span class="font-bold ${o.score > 0 ? 'text-red-600' : 'text-slate-400'}">${o.score > 0 ? o.score : '-'}</span></td>
                     <td class="py-2 pr-3 text-xs text-slate-500">${o.date || '-'}</td>
                     <td class="py-2 pr-3 text-xs">${o.contract || '-'}</td>
-                    <td class="py-2 pr-3 font-mono text-xs">${o.order_no || '-'}</td>
-                    <td class="py-2 pr-3"><span class="px-2 py-0.5 text-xs rounded ${getSubclassBadgeClass(o.subclass)}">${o.subclass || '-'}</span></td>
                     <td class="py-2 pr-3 text-xs">${o.customer || '-'}</td>
-                    <td class="py-2 pr-3"><span class="font-bold ${o.score > 0 ? 'text-red-600' : 'text-slate-400'}">${o.score > 0 ? o.score : '-'}</span></td>
-                    <td class="py-2 text-xs text-slate-600" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(o.description || '').replace(/"/g, '&quot;')}">${o.description || '-'}</td>
+                    <td class="py-2 pr-3 text-xs">${o.send_region || '-'}</td>
+                    <td class="py-2 text-xs">${o.receive_region || '-'}</td>
                 </tr>
             `).join('');
         }
 
+        function buildKpiContractFilter(contracts) {
+            const section = document.getElementById('kpiContractFilterSection');
+            const btnsContainer = document.getElementById('kpiContractBtns');
+            if (!contracts || contracts.length <= 1) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+
+            // 全选按钮
+            let html = `<button class="filter-btn ${kpiContractAllSelected ? 'active' : ''}" onclick="toggleKpiContractAll(${JSON.stringify(contracts).replace(/"/g, '&quot;')})" style="font-weight: 600;">全选</button>`;
+
+            contracts.forEach(c => {
+                const selected = kpiContractAllSelected || kpiContractFilterSet.has(c);
+                html += `<button class="filter-btn ${selected ? 'active' : ''}" onclick="toggleKpiContract('${c.replace(/'/g, "\\'")}')">${c}</button>`;
+            });
+
+            btnsContainer.innerHTML = html;
+        }
+
+        function toggleKpiContractAll(contracts) {
+            if (kpiContractAllSelected) {
+                // 当前全选 → 取消全选
+                kpiContractAllSelected = false;
+                kpiContractFilterSet.clear();
+            } else {
+                // 当前部分选中 → 全选
+                kpiContractAllSelected = true;
+                kpiContractFilterSet.clear();
+            }
+            renderKpiTable(kpiCurrentTab);
+        }
+
+        function toggleKpiContract(contract) {
+            if (kpiContractAllSelected) {
+                // 当前全选状态 → 切换为部分选中，除当前contract外全选
+                kpiContractAllSelected = false;
+                // 获取当前周期所有合同
+                const periodData = kpiCurrentTab === 'previous' ? kpiData.previous_period : kpiData.current_period;
+                const orders = periodData.orders || [];
+                const allContracts = [...new Set(orders.map(o => o.contract || '-'))];
+                allContracts.forEach(c => kpiContractFilterSet.add(c));
+                kpiContractFilterSet.delete(contract);
+            } else {
+                // 当前部分选中状态
+                if (kpiContractFilterSet.has(contract)) {
+                    kpiContractFilterSet.delete(contract);
+                } else {
+                    kpiContractFilterSet.add(contract);
+                }
+                // 检查是否所有合同都被选中
+                const periodData = kpiCurrentTab === 'previous' ? kpiData.previous_period : kpiData.current_period;
+                const orders = periodData.orders || [];
+                const allContracts = [...new Set(orders.map(o => o.contract || '-'))];
+                if (allContracts.every(c => kpiContractFilterSet.has(c))) {
+                    kpiContractAllSelected = true;
+                    kpiContractFilterSet.clear();
+                }
+            }
+            renderKpiTable(kpiCurrentTab);
+        }
+
+        function toggleKpiTableCollapse() {
+            kpiTableCollapsed = !kpiTableCollapsed;
+            const section = document.getElementById('kpiTableSection');
+            const icon = document.querySelector('.kpi-collapse-icon');
+            if (kpiTableCollapsed) {
+                section.style.maxHeight = '0px';
+                section.style.opacity = '0';
+                section.style.marginBottom = '0';
+                icon.style.transform = 'rotate(-90deg)';
+            } else {
+                section.style.maxHeight = '2000px';
+                section.style.opacity = '1';
+                section.style.marginBottom = '';
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
         function getSubclassBadgeClass(subclass) {
             const map = {
                 '延误': 'bg-red-100 text-red-600',
@@ -1673,6 +1846,86 @@
         function closeTodayOrdersModal() {
             document.getElementById('todayOrdersModal').style.display = 'none';
         }
+
+        // ==================== 订单搜索 ====================
+        async function handleSearchOrder() {
+            const input = document.getElementById('searchOrderInput');
+            const orderNo = input.value.trim();
+            if (!orderNo) {
+                input.focus();
+                return;
+            }
+
+            const modal = document.getElementById('searchOrderModal');
+            const content = document.getElementById('searchOrderContent');
+            const title = document.getElementById('searchModalTitle');
+
+            modal.style.display = 'flex';
+            title.textContent = `查询中: ${orderNo}`;
+            content.innerHTML = '<div class="text-center py-12"><div class="inline-block w-8 h-8 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div><p class="mt-3 text-slate-500">正在查询...</p></div>';
+
+            try {
+                const resp = await fetch(`/api/search-order?order_no=${encodeURIComponent(orderNo)}`);
+                const result = await resp.json();
+
+                if (result.success && result.data.length > 0) {
+                    title.textContent = `查询结果: ${orderNo} (${result.total}条)`;
+                    renderSearchResults(result.data, content);
+                } else if (result.success && result.data.length === 0) {
+                    title.textContent = `查询结果: ${orderNo}`;
+                    content.innerHTML = '<div class="text-center py-12"><svg class="w-16 h-16 mx-auto text-slate-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-slate-400 text-lg">未找到相关订单</p><p class="text-slate-300 text-sm mt-1">请检查订单号是否正确</p></div>';
+                } else {
+                    title.textContent = '查询失败';
+                    content.innerHTML = `<div class="text-center py-12 text-red-400">${result.message || '查询失败'}</div>`;
+                }
+            } catch (err) {
+                title.textContent = '查询失败';
+                content.innerHTML = `<div class="text-center py-12 text-red-400">网络错误: ${err.message}</div>`;
+            }
+        }
+
+        function renderSearchResults(orders, container) {
+            let html = '<div class="space-y-4">';
+            orders.forEach((o, idx) => {
+                const statusColor = o.status === '已签收' ? 'green' : o.status === '已发货' ? 'blue' : 'amber';
+                html += `
+                <div class="border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="bg-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-100">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-0.5 rounded">#${idx + 1}</span>
+                            <span class="font-semibold text-slate-800">${o.order_no || '--'}</span>
+                        </div>
+                        <span class="badge badge-${statusColor}">${o.status || '--'}</span>
+                    </div>
+                    <div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                        <div><span class="text-slate-400">收货方:</span> <span class="font-medium text-slate-700">${o.receive_name || '--'}</span></div>
+                        <div><span class="text-slate-400">收货联系人:</span> <span class="font-medium text-slate-700">${o.contact_person || '--'}</span></div>
+                        <div><span class="text-slate-400">电话:</span> <span class="font-medium text-slate-700">${o.receiver_phone || '--'}</span></div>
+                        <div><span class="text-slate-400">客户组:</span> <span class="font-medium text-slate-700">${o.customer_group || '--'}</span></div>
+                        <div><span class="text-slate-400">司机:</span> <span class="font-medium text-slate-700">${o.driver || '--'}</span></div>
+                        <div><span class="text-slate-400">车牌号:</span> <span class="font-medium text-slate-700">${o.license_plate || '--'}</span></div>
+                        <div><span class="text-slate-400">网点:</span> <span class="font-medium text-slate-700">${o.network || '--'}</span></div>
+                        <div><span class="text-slate-400">省/市/区:</span> <span class="font-medium text-slate-700">${[o.province, o.city, o.district].filter(Boolean).join(' / ') || '--'}</span></div>
+                        <div class="md:col-span-2"><span class="text-slate-400">详细地址:</span> <span class="font-medium text-slate-700">${o.detailed_address || '--'}</span></div>
+                        <div><span class="text-slate-400">配载重量:</span> <span class="font-semibold text-blue-600">${o.stowage_weight ? (o.stowage_weight / 1000).toFixed(2) + ' 吨' : '--'}</span></div>
+                        <div><span class="text-slate-400">下单时间:</span> <span class="text-slate-600">${o.order_date || '--'}</span></div>
+                        <div><span class="text-slate-400">需求到货:</span> <span class="text-slate-600">${o.delivery_date || '--'}</span></div>
+                        <div><span class="text-slate-400">签收时间:</span> <span class="text-slate-600">${o.receive_time || '--'}</span></div>
+                    </div>
+                </div>`;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function closeSearchModal() {
+            document.getElementById('searchOrderModal').style.display = 'none';
+        }
+
+        // 搜索弹窗点击外部关闭
+        document.getElementById('searchOrderModal').addEventListener('click', function(e) {
+            if (e.target === this) closeSearchModal();
+        });
 
         function renderTodayOrdersDetail(data) {
             allTodayOrders = data.detail_orders || [];
@@ -2116,3 +2369,4 @@
     </script>
 </body>
 </html>
+ 
