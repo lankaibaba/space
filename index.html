@@ -259,6 +259,50 @@
         .badge-warning { background: #fffbeb; color: #d97706; }
         .badge-success { background: #f0fdf4; color: #16a34a; }
         .badge-info { background: #eff6ff; color: #2563eb; }
+        .selection-panel {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-top: 16px;
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.25);
+            display: none;
+            animation: slideDown 0.3s ease;
+        }
+        .selection-panel.show { display: block; }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .cargo-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            color: white;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .cargo-tag .cargo-count {
+            background: rgba(255,255,255,0.95);
+            color: #667eea;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .order-checkbox {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #667eea;
+            border-radius: 4px;
+        }
+        .order-checkbox:checked {
+            accent-color: #667eea;
+        }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
@@ -468,10 +512,10 @@
         </div>
 
         <!-- 主内容区域 -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
                     <!-- 分省统计（去除图表，保留数据卡片） -->
-            <div class="card p-6 lg:col-span-2">
+            <div class="card p-6 lg:col-span-3">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
                         <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -489,7 +533,7 @@
             </div>
 
             <!-- 近7天订单重量趋势 -->
-            <div class="card p-6 lg:col-span-2">
+            <div class="card p-6 lg:col-span-3">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
                         <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -518,7 +562,7 @@
             </div>
 
             <!-- 待配载订单列表 -->
-            <div class="card p-6">
+            <div class="card p-6 lg:col-span-2">
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
                         <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -543,9 +587,12 @@
                     <table class="w-full text-sm">
                         <thead class="sticky top-0 bg-slate-50">
                             <tr class="text-left text-slate-500 text-xs uppercase">
+                                <th class="py-2 pr-3 w-10"><input type="checkbox" class="order-checkbox" id="selectAllOrders" onchange="toggleSelectAll(this)" title="全选/取消全选"></th>
                                 <th class="py-2 pr-3">订单号</th>
                                 <th class="py-2 pr-3">区域</th>
+                                <th class="py-2 pr-3">客户</th>
                                 <th class="py-2 pr-3">重量(吨)</th>
+                                <th class="py-2 pr-3">件数</th>
                                 <th class="py-2 pr-3">仓库</th>
                                 <th class="py-2 pr-3">创建时间</th>
                                 <th class="py-2 pr-3">紧急</th>
@@ -555,10 +602,42 @@
                         <tbody id="orderTable"></tbody>
                     </table>
                 </div>
+                <!-- 已选订单汇总面板 -->
+                <div class="selection-panel" id="selectionPanel">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-white font-semibold text-base flex items-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                            </svg>
+                            已选订单汇总
+                        </h3>
+                        <button onclick="clearSelection()" class="px-3 py-1 bg-white/20 text-white text-sm rounded-lg hover:bg-white/30 transition">取消全选</button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 mb-4">
+                        <div class="text-center p-3 bg-white/10 rounded-xl">
+                            <p class="text-white/70 text-xs mb-1">已选订单数</p>
+                            <p class="text-white text-2xl font-bold" id="selectedOrderCount">0</p>
+                        </div>
+                        <div class="text-center p-3 bg-white/10 rounded-xl">
+                            <p class="text-white/70 text-xs mb-1">已选总重量</p>
+                            <p class="text-white text-2xl font-bold"><span id="selectedTotalWeight">0</span> <span class="text-sm font-normal text-white/70">吨</span></p>
+                        </div>
+                        <div class="text-center p-3 bg-white/10 rounded-xl">
+                            <p class="text-white/70 text-xs mb-1">已选总件数</p>
+                            <p class="text-white text-2xl font-bold" id="selectedTotalQty">0</p>
+                        </div>
+                    </div>
+                    <div class="bg-white/10 rounded-xl p-3">
+                        <p class="text-white/70 text-xs mb-2">货物详情汇总</p>
+                        <div class="flex flex-wrap gap-2" id="selectedCargoDetails">
+                            <span class="text-white/50 text-sm">暂无选择</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- 分省详细统计 -->
-            <div class="card p-6">
+            <div class="card p-6 lg:col-span-1">
                 <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
                     <svg class="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
@@ -583,7 +662,7 @@
             </div>
 
             <!-- 发货省份待配载订单 -->
-            <div class="card p-6 lg:col-span-2">
+            <div class="card p-6 lg:col-span-3">
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
                         <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -626,7 +705,7 @@
             </div>
 
             <!-- KPI类处罚统计 -->
-            <div class="card p-6 lg:col-span-2">
+            <div class="card p-6 lg:col-span-3">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
                         <svg class="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -731,6 +810,10 @@
                 </div>
                 </div>
             </div>
+        </div>
+
+        <!-- 今日/明日应到货（独立2列网格） -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 
             <!-- 今日未签收 -->
             <div class="card p-6">
@@ -1246,6 +1329,7 @@
 
         function updateOrderTable(orders) {
             allOrders = orders;
+            resetSelection();  // 数据刷新时清除选中状态
             
             // 提取省份列表
             const provinces = [...new Set(orders.map(o => {
@@ -1288,21 +1372,177 @@
             document.getElementById('orderCount').textContent = `${orders.length} 单`;
 
             if (orders.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400">暂无数据</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10" class="py-8 text-center text-slate-400">暂无数据</td></tr>`;
+                document.getElementById('selectionPanel').classList.remove('show');
                 return;
             }
 
-            tbody.innerHTML = orders.map(o => `
-                <tr class="border-b border-slate-100 hover:bg-slate-50">
+            // Store filtered orders for checkbox state management
+            window._filteredOrders = orders;
+            // Reset select all checkbox
+            document.getElementById('selectAllOrders').checked = false;
+
+            tbody.innerHTML = orders.map((o, idx) => `
+                <tr class="border-b border-slate-100 hover:bg-slate-50" data-order-index="${idx}">
+                    <td class="py-2 pr-3">
+                        <input type="checkbox" class="order-checkbox order-cb" data-index="${idx}" onchange="handleOrderCheckbox()">
+                    </td>
                     <td class="py-2 pr-3 font-mono text-xs">${o.order_no}</td>
                     <td class="py-2 pr-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">${o.region}</span></td>
+                    <td class="py-2 pr-3 text-xs text-slate-600 max-w-[120px] truncate" title="${o.customer || '无'}">${o.customer || '无'}</td>
                     <td class="py-2 pr-3">${formatWeight(o.weight)}</td>
+                    <td class="py-2 pr-3 text-xs text-slate-600">${o.total_qty ? formatNumber(o.total_qty) : '-'}</td>
                     <td class="py-2 pr-3 text-xs text-slate-500">${o.warehouse}</td>
                     <td class="py-2 pr-3 text-xs text-slate-500">${o.order_date || '-'}</td>
                     <td class="py-2 pr-3"><span class="px-2 py-0.5 text-xs rounded ${o.urgent_flag_custom === '紧急' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}">${o.urgent_flag_custom || '-'}</span></td>
                     <td class="py-2"><span class="px-2 py-0.5 text-xs rounded ${o.the_way_flag_custom === '在途' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}">${o.the_way_flag_custom || '-'}</span></td>
                 </tr>
             `).join('');
+
+            // Restore checkbox states from selected set
+            restoreCheckboxStates();
+            // Update summary panel
+            updateSelectionPanel();
+        }
+
+        // ---- 订单选择管理 ----
+        let selectedOrderNos = new Set(); // 使用订单号追踪选中状态（跨筛选持久化）
+
+        function toggleSelectAll(checkbox) {
+            const orders = window._filteredOrders || [];
+            const cbs = document.querySelectorAll('.order-cb');
+            if (checkbox.checked) {
+                orders.forEach(o => selectedOrderNos.add(o.order_no));
+                cbs.forEach(cb => cb.checked = true);
+            } else {
+                orders.forEach(o => selectedOrderNos.delete(o.order_no));
+                cbs.forEach(cb => cb.checked = false);
+            }
+            updateSelectionPanel();
+        }
+
+        function handleOrderCheckbox() {
+            const orders = window._filteredOrders || [];
+            const cbs = document.querySelectorAll('.order-cb');
+            const selectAll = document.getElementById('selectAllOrders');
+
+            // Update selectedOrderNos
+            selectedOrderNos.clear();
+            cbs.forEach(cb => {
+                const idx = parseInt(cb.dataset.index);
+                if (cb.checked && orders[idx]) {
+                    selectedOrderNos.add(orders[idx].order_no);
+                }
+            });
+
+            // Sync select all checkbox
+            const allChecked = orders.length > 0 && cbs.length === orders.length &&
+                Array.from(cbs).every(cb => cb.checked);
+            const noneChecked = Array.from(cbs).every(cb => !cb.checked);
+            selectAll.checked = allChecked;
+            selectAll.indeterminate = !allChecked && !noneChecked;
+
+            updateSelectionPanel();
+        }
+
+        function restoreCheckboxStates() {
+            const orders = window._filteredOrders || [];
+            const cbs = document.querySelectorAll('.order-cb');
+            const selectAll = document.getElementById('selectAllOrders');
+
+            let checkedCount = 0;
+            cbs.forEach(cb => {
+                const idx = parseInt(cb.dataset.index);
+                if (orders[idx] && selectedOrderNos.has(orders[idx].order_no)) {
+                    cb.checked = true;
+                    checkedCount++;
+                } else {
+                    cb.checked = false;
+                }
+            });
+
+            if (orders.length > 0 && checkedCount === orders.length) {
+                selectAll.checked = true;
+                selectAll.indeterminate = false;
+            } else if (checkedCount > 0) {
+                selectAll.checked = false;
+                selectAll.indeterminate = true;
+            } else {
+                selectAll.checked = false;
+                selectAll.indeterminate = false;
+            }
+        }
+
+        function updateSelectionPanel() {
+            const orders = window._filteredOrders || [];
+            const cbs = document.querySelectorAll('.order-cb');
+            const panel = document.getElementById('selectionPanel');
+
+            // Collect selected orders
+            const selectedOrders = [];
+            cbs.forEach(cb => {
+                const idx = parseInt(cb.dataset.index);
+                if (cb.checked && orders[idx]) {
+                    selectedOrders.push(orders[idx]);
+                }
+            });
+
+            if (selectedOrders.length === 0) {
+                panel.classList.remove('show');
+                return;
+            }
+
+            panel.classList.add('show');
+
+            // Calculate totals
+            const totalWeight = selectedOrders.reduce((sum, o) => sum + (o.weight || 0), 0);
+            const totalQty = selectedOrders.reduce((sum, o) => sum + (o.total_qty || 0), 0);
+
+            // Aggregate cargo details
+            const cargoMap = {};
+            selectedOrders.forEach(o => {
+                const details = o.cargo_details || [];
+                details.forEach(d => {
+                    const key = d.type || '未知';
+                    cargoMap[key] = (cargoMap[key] || 0) + (d.count || 0);
+                });
+            });
+
+            // Update DOM
+            document.getElementById('selectedOrderCount').textContent = selectedOrders.length;
+            document.getElementById('selectedTotalWeight').textContent = formatWeight(totalWeight);
+            document.getElementById('selectedTotalQty').textContent = formatNumber(totalQty);
+
+            // Cargo details
+            const cargoEl = document.getElementById('selectedCargoDetails');
+            const cargoKeys = Object.keys(cargoMap);
+            if (cargoKeys.length > 0) {
+                cargoEl.innerHTML = cargoKeys.map(k => `
+                    <span class="cargo-tag">
+                        ${k}
+                        <span class="cargo-count">${formatNumber(cargoMap[k])} 件</span>
+                    </span>
+                `).join('');
+            } else {
+                cargoEl.innerHTML = '<span class="text-white/50 text-sm">无货物详情数据</span>';
+            }
+        }
+
+        function clearSelection() {
+            selectedOrderNos.clear();
+            const cbs = document.querySelectorAll('.order-cb');
+            cbs.forEach(cb => cb.checked = false);
+            document.getElementById('selectAllOrders').checked = false;
+            document.getElementById('selectAllOrders').indeterminate = false;
+            updateSelectionPanel();
+        }
+
+        // Reset selection when order data is fully reloaded
+        function resetSelection() {
+            selectedOrderNos.clear();
+            document.getElementById('selectAllOrders').checked = false;
+            document.getElementById('selectAllOrders').indeterminate = false;
+            document.getElementById('selectionPanel').classList.remove('show');
         }
 
         function updateTodayOrders(data) {

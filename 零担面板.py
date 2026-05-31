@@ -16,6 +16,7 @@ import threading
 import time
 import os
 import sys
+import json
 import webbrowser
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -123,6 +124,38 @@ def login():
         return None
 
 
+def _parse_cargo_details(order):
+    """解析订单中的货物详情，优先使用 packaging_data_json，回退到顶层字段"""
+    cargo_list = []
+    packaging_json = order.get("packaging_data_json")
+    if packaging_json:
+        try:
+            packages = json.loads(packaging_json) if isinstance(packaging_json, str) else packaging_json
+            for pkg in packages:
+                cargo_list.append({
+                    "type": pkg.get("package_property_desc", "未知"),
+                    "count": float(pkg.get("packaging_num", 0))
+                })
+        except Exception:
+            pass
+
+    # 回退：如果 packaging_data_json 解析为空，使用顶层字段
+    if not cargo_list:
+        prop_desc = order.get("package_property_desc", "")
+        pkg_num = order.get("packaging_num")
+        if prop_desc and pkg_num is not None:
+            try:
+                pkg_num = float(pkg_num)
+            except (ValueError, TypeError):
+                pkg_num = 0
+            # package_property_desc 可能是逗号分隔的多个类型，取第一个作为默认
+            types = [t.strip() for t in prop_desc.split(",") if t.strip()]
+            if types:
+                cargo_list.append({"type": types[0], "count": pkg_num})
+
+    return cargo_list
+
+
 def format_time(time_str):
     if not time_str:
         return None
@@ -186,11 +219,14 @@ def get_manual_query_data(token):
             all_orders.append({
                 "order_no": o.get("source_order_no", "无"),
                 "region": o.get("receive_region_code_show", "无"),
+                "customer": o.get("customer", "无"),
                 "weight": float(o.get("total_weight", 0)),
+                "total_qty": float(o.get("total_qty", 0)),
                 "warehouse": o.get("all_send_storage_code_show", "无"),
                 "order_date": format_time(o.get("order_date")),
                 "urgent_flag_custom": o.get("urgent_flag_custom", "无"),
-                "the_way_flag_custom": o.get("the_way_flag_custom", "无")
+                "the_way_flag_custom": o.get("the_way_flag_custom", "无"),
+                "cargo_details": _parse_cargo_details(o)
             })
     total_weight = sum(o["weight"] for o in all_orders)
     return {
@@ -235,11 +271,14 @@ def get_region_stats_data(token):
             all_orders.append({
                 "order_no": o.get("source_order_no", "无"),
                 "region": o.get("receive_region_code_show", "无"),
+                "customer": o.get("customer", "无"),
                 "weight": float(o.get("total_weight", 0)),
+                "total_qty": float(o.get("total_qty", 0)),
                 "warehouse": o.get("all_send_storage_code_show", "无"),
                 "order_date": format_time(o.get("order_date")),
                 "urgent_flag_custom": o.get("urgent_flag_custom", "无"),
-                "the_way_flag_custom": o.get("the_way_flag_custom", "无")
+                "the_way_flag_custom": o.get("the_way_flag_custom", "无"),
+                "cargo_details": _parse_cargo_details(o)
             })
     total_count = sum(r["count"] for r in region_details)
     total_weight = sum(r["weight"] for r in region_details)
@@ -258,11 +297,14 @@ def _fetch_region_orders(token, region):
     parsed_orders = [{
         "order_no": o.get("source_order_no", "无"),
         "region": o.get("receive_region_code_show", "无"),
+        "customer": o.get("customer", "无"),
         "weight": float(o.get("total_weight", 0)),
+        "total_qty": float(o.get("total_qty", 0)),
         "warehouse": o.get("all_send_storage_code_show", "无"),
         "order_date": format_time(o.get("order_date")),
         "urgent_flag_custom": o.get("urgent_flag_custom", "无"),
-        "the_way_flag_custom": o.get("the_way_flag_custom", "无")
+        "the_way_flag_custom": o.get("the_way_flag_custom", "无"),
+        "cargo_details": _parse_cargo_details(o)
     } for o in orders]
     return {
         "region": region,
@@ -458,11 +500,14 @@ def _fetch_sender_region_orders(token, region):
         "order_no": o.get("source_order_no", "无"),
         "sender_region": o.get("send_region_code_show", "无"),
         "receive_region": o.get("receive_region_code_show", "无"),
+        "customer": o.get("customer", "无"),
         "weight": float(o.get("total_weight", 0)),
+        "total_qty": float(o.get("total_qty", 0)),
         "stowage_weight": float(o.get("stowage_all_weight", 0) or 0),
         "warehouse": o.get("all_send_storage_code_show", "无"),
         "create_time": format_time(o.get("order_date")),
-        "on_the_way": o.get("the_way_flag_custom", "无")
+        "on_the_way": o.get("the_way_flag_custom", "无"),
+        "cargo_details": _parse_cargo_details(o)
     } for o in orders]
     return {"region": region, "count": len(orders), "weight": round(total_weight, 2), "orders": parsed_orders}
 
