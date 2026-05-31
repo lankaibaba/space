@@ -1498,7 +1498,7 @@ if __name__ == '__main__':
         try:
             # 尝试使用系统默认浏览器打开
             if sys.platform == 'win32':
-                subprocess.Popen(['start', 'chrome', url], shell=True, stdout=subprocess.DEVNULL,
+                subprocess.Popen(['start', 'msedge', url], shell=True, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL)
             else:
                 webbrowser.open(url)
