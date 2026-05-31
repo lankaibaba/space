@@ -613,7 +613,7 @@
                         </h3>
                         <button onclick="clearSelection()" class="px-3 py-1 bg-white/20 text-white text-sm rounded-lg hover:bg-white/30 transition">取消全选</button>
                     </div>
-                    <div class="grid grid-cols-3 gap-4 mb-4">
+                    <div class="grid grid-cols-2 gap-4 mb-4">
                         <div class="text-center p-3 bg-white/10 rounded-xl">
                             <p class="text-white/70 text-xs mb-1">已选订单数</p>
                             <p class="text-white text-2xl font-bold" id="selectedOrderCount">0</p>
@@ -621,10 +621,6 @@
                         <div class="text-center p-3 bg-white/10 rounded-xl">
                             <p class="text-white/70 text-xs mb-1">已选总重量</p>
                             <p class="text-white text-2xl font-bold"><span id="selectedTotalWeight">0</span> <span class="text-sm font-normal text-white/70">吨</span></p>
-                        </div>
-                        <div class="text-center p-3 bg-white/10 rounded-xl">
-                            <p class="text-white/70 text-xs mb-1">已选总件数</p>
-                            <p class="text-white text-2xl font-bold" id="selectedTotalQty">0</p>
                         </div>
                     </div>
                     <div class="bg-white/10 rounded-xl p-3">
@@ -1496,7 +1492,6 @@
 
             // Calculate totals
             const totalWeight = selectedOrders.reduce((sum, o) => sum + (o.weight || 0), 0);
-            const totalQty = selectedOrders.reduce((sum, o) => sum + (o.total_qty || 0), 0);
 
             // Aggregate cargo details
             const cargoMap = {};
@@ -1511,7 +1506,6 @@
             // Update DOM
             document.getElementById('selectedOrderCount').textContent = selectedOrders.length;
             document.getElementById('selectedTotalWeight').textContent = formatWeight(totalWeight);
-            document.getElementById('selectedTotalQty').textContent = formatNumber(totalQty);
 
             // Cargo details
             const cargoEl = document.getElementById('selectedCargoDetails');
