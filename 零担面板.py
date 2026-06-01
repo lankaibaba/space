@@ -2,8 +2,8 @@ import sys, os, re
 
 # 打包后静默运行，不弹命令行窗口
 if getattr(sys, 'frozen', False):
-    sys.stdout = open(os.devnull, 'w')
-    sys.stderr = open(os.devnull, 'w')
+    sys.stdout = open(os.devnull, 'w', encoding='utf-8')
+    sys.stderr = open(os.devnull, 'w', encoding='utf-8')
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -952,17 +952,18 @@ def query_weekly_orders_by_day(token):
 def refresh_all_data():
     """全局刷新 - 使用并行查询优化速度，返回是否成功"""
     global cache_data
-    from time import perf_counter
-    t0 = perf_counter()
-    print(f"[{datetime.now()}] 开始刷新数据... (省份: {AUTO_REGIONS} | 网点: {SELECTED_NETWORKS})")
-
-    t_login_start = perf_counter()
-    token = login()
-    print(f"  ⏱ 登录耗时: {perf_counter() - t_login_start:.2f}s")
-    if not token:
-        print("登录失败，跳过本次刷新")
-        return False
     try:
+        from time import perf_counter
+        t0 = perf_counter()
+        print(f"[{datetime.now()}] 开始刷新数据... (省份: {AUTO_REGIONS} | 网点: {SELECTED_NETWORKS})")
+
+        t_login_start = perf_counter()
+        token = login()
+        print(f"  [计时] 登录耗时: {perf_counter() - t_login_start:.2f}s")
+        if not token:
+            print("登录失败，跳过本次刷新")
+            return False
+
         # 并行执行：统一查询(3合1) + 未签收 + 周趋势 + 发货省份 + 今日订单
         with ThreadPoolExecutor(max_workers=6) as executor:
             future_unified = executor.submit(get_pending_orders_unified, token)
@@ -977,7 +978,7 @@ def refresh_all_data():
             try:
                 t1 = perf_counter()
                 manual_query, auto_monitor, region_stats = future_unified.result()
-                print(f"  ⏱ 统一查询(unified): {perf_counter() - t1:.2f}s")
+                print(f"  [计时] 统一查询(unified): {perf_counter() - t1:.2f}s")
                 results["manual_query"] = manual_query
                 results["auto_monitor"] = auto_monitor
                 results["region_stats"] = region_stats
@@ -997,7 +998,7 @@ def refresh_all_data():
                 try:
                     t2 = perf_counter()
                     results[key] = future.result()
-                    print(f"  ⏱ {key}: {perf_counter() - t2:.2f}s")
+                    print(f"  [计时] {key}: {perf_counter() - t2:.2f}s")
                 except Exception as e:
                     print(f"查询 {key} 失败: {e}")
                     results[key] = {}
@@ -1009,6 +1010,8 @@ def refresh_all_data():
         return True
     except Exception as e:
         print(f"刷新数据错误: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -1107,14 +1110,17 @@ def force_refresh():
             if isinstance(networks, list) and len(networks) > 0:
                 SELECTED_NETWORKS = networks
                 print(f"[{datetime.now()}] 刷新前更新网点配置: {SELECTED_NETWORKS}")
-    except Exception as e:
-        print(f"[ERROR] 解析refresh请求参数失败: {e}")
 
-    success = refresh_all_data()
-    if success:
-        return jsonify({"success": True, "message": "数据已刷新", "provinces": AUTO_REGIONS, "networks": SELECTED_NETWORKS})
-    else:
-        return jsonify({"success": False, "message": "登录失败，请检查账号配置"})
+        success = refresh_all_data()
+        if success:
+            return jsonify({"success": True, "message": "数据已刷新", "provinces": AUTO_REGIONS, "networks": SELECTED_NETWORKS})
+        else:
+            return jsonify({"success": False, "message": "登录失败，请检查账号配置"})
+    except Exception as e:
+        print(f"[ERROR] 全局刷新异常: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "message": f"刷新异常: {str(e)}"})
 
 
 @app.route('/api/health')
