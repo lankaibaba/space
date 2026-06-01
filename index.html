@@ -592,7 +592,7 @@
                                 <th class="py-2 pr-3">区域</th>
                                 <th class="py-2 pr-3">客户</th>
                                 <th class="py-2 pr-3">重量(吨)</th>
-                                <th class="py-2 pr-3">件数</th>
+                                <th class="py-2 pr-3">备注</th>
                                 <th class="py-2 pr-3">仓库</th>
                                 <th class="py-2 pr-3">创建时间</th>
                                 <th class="py-2 pr-3">紧急</th>
@@ -1429,7 +1429,7 @@
                     <td class="py-2 pr-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">${o.region}</span></td>
                     <td class="py-2 pr-3 text-xs text-slate-600 max-w-[120px] truncate" title="${o.customer || '无'}">${o.customer || '无'}</td>
                     <td class="py-2 pr-3">${formatWeight(o.weight)}</td>
-                    <td class="py-2 pr-3 text-xs text-slate-600">${o.total_qty ? formatNumber(o.total_qty) : '-'}</td>
+                    <td class="py-2 pr-3 text-xs text-slate-600 max-w-[160px] truncate" title="${o.remark || ''}">${o.remark || '-'}</td>
                     <td class="py-2 pr-3 text-xs text-slate-500">${o.warehouse}</td>
                     <td class="py-2 pr-3 text-xs text-slate-500">${o.order_date || '-'}</td>
                     <td class="py-2 pr-3"><span class="px-2 py-0.5 text-xs rounded ${o.urgent_flag_custom === '紧急' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}">${o.urgent_flag_custom || '-'}</span></td>
