@@ -1075,13 +1075,19 @@ def index():
 @app.route('/api/dashboard')
 def get_dashboard():
     with cache_lock:
-        return jsonify({
+        resp = jsonify({
             "success": True,
             "data": cache_data,
             "selected_provinces": AUTO_REGIONS,
             "all_provinces": ALL_PROVINCES,
+            "selected_networks": SELECTED_NETWORKS,
+            "all_networks": list(ALL_NETWORKS.keys()),
             "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
 
 
 @app.route('/api/refresh', methods=['POST'])
