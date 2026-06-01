@@ -995,13 +995,13 @@
 
         async function fetchDashboard() {
             try {
-                const resp = await fetch('/api/dashboard');
+                const resp = await fetch('/api/dashboard', { cache: 'no-cache' });
                 const result = await resp.json();
                 if (result.success) {
                     cachedData = result.data;
                     updateUI(result.data);
                     document.getElementById('lastUpdate').textContent = result.data.last_update || result.server_time;
-                    
+
                     // 同步省份配置
                     if (result.selected_provinces) {
                         selectedProvinces = result.selected_provinces;
@@ -1011,6 +1011,16 @@
                     if (result.all_provinces) {
                         allProvinces = result.all_provinces;
                         renderProvinceCheckboxes();
+                    }
+                    // 同步网点配置
+                    if (result.selected_networks) {
+                        selectedNetworks = result.selected_networks;
+                        selectedNetworksSet = new Set(selectedNetworks);
+                        updateSelectedNetworkCount();
+                    }
+                    if (result.all_networks) {
+                        allNetworks = result.all_networks;
+                        renderNetworkCheckboxes();
                     }
                 }
             } catch (err) {
@@ -1056,6 +1066,7 @@
                 }
             } catch (err) {
                 console.error('刷新失败:', err);
+                alert('刷新失败，请检查网络连接或服务器是否正常运行\n错误: ' + (err.message || '未知错误'));
             } finally {
                 hideRefreshStatus();
                 btn.disabled = false;
@@ -1093,7 +1104,7 @@
 
                 if (result.success) {
                     // 重新获取最新数据并更新UI
-                    const dataResp = await fetch('/api/dashboard');
+                    const dataResp = await fetch('/api/dashboard', { cache: 'no-cache' });
                     const data = await dataResp.json();
                     if (data.success) {
                         cachedData = data.data;
@@ -1102,9 +1113,11 @@
                     }
                 } else {
                     console.error(`刷新 ${module} 失败:`, result.message);
+                    alert(`刷新${nameMap[module] || module}失败: ` + (result.message || '未知错误'));
                 }
             } catch (err) {
                 console.error(`刷新 ${module} 异常:`, err);
+                alert(`刷新${nameMap[module] || module}异常，请检查网络连接\n错误: ` + (err.message || '未知错误'));
             } finally {
                 hideRefreshStatus();
                 btn.disabled = false;
@@ -1132,9 +1145,11 @@
                     kpiLoaded = true;
                 } else {
                     console.error('刷新KPI失败:', result.message);
+                    alert('刷新KPI失败: ' + (result.message || '未知错误'));
                 }
             } catch (err) {
                 console.error('刷新KPI异常:', err);
+                alert('刷新KPI异常，请检查网络连接\n错误: ' + (err.message || '未知错误'));
             } finally {
                 if (btn) {
                     btn.disabled = false;
@@ -1157,12 +1172,12 @@
 
                 if (result.success) {
                     // 刷新成功后，重新获取最新的数据
-                    const dataResp = await fetch('/api/dashboard');
+                    const dataResp = await fetch('/api/dashboard', { cache: 'no-cache' });
                     const data = await dataResp.json();
-                    
+
                     if (data.success) {
                         cachedData = data.data;
-                        
+
                         // 并行更新待配载订单相关数据
                         await Promise.all([
                             updatePendingOverviewAsync(data.data.auto_monitor),
@@ -1174,9 +1189,12 @@
                         // 更新时间戳
                         document.getElementById('lastUpdate').textContent = data.data.last_update || new Date().toLocaleString('zh-CN');
                     }
+                } else {
+                    alert('刷新待配载订单失败: ' + (result.message || '未知错误'));
                 }
             } catch (err) {
                 console.error('刷新待配载订单失败:', err);
+                alert('刷新待配载订单异常，请检查网络连接\n错误: ' + (err.message || '未知错误'));
             } finally {
                 btn.disabled = false;
                 icon.classList.remove('animate-spin');
@@ -1223,61 +1241,85 @@
         }
 
         function updateUI(data) {
-            // 并行更新各板块数据
+            // 并行更新各板块数据，每个板块独立 catch 确保一个失败不影响其他
+            const updatePanel = (name, fn) => {
+                try {
+                    fn();
+                } catch (err) {
+                    console.error(`[updateUI] 更新板块 ${name} 失败:`, err);
+                }
+            };
+
             Promise.all([
                 // 板块1: 概览卡片
                 new Promise(resolve => {
-                    const autoMonitor = data.auto_monitor;
-                    const todayUnsigned = data.today_unsigned;
-                    const tomorrowUnsigned = data.tomorrow_unsigned;
-                    document.getElementById('totalCount').textContent = formatNumber(autoMonitor.total_count);
-                    document.getElementById('totalWeight').textContent = formatWeight(autoMonitor.total_weight);
-                    document.getElementById('todayUnsigned').textContent = formatNumber(todayUnsigned.unsigned_count);
-                    document.getElementById('todayTotal').textContent = formatNumber(todayUnsigned.total_orders);
-                    document.getElementById('tomorrowTotal').textContent = formatNumber(tomorrowUnsigned.total_orders);
-                    document.getElementById('tomorrowUnsigned').textContent = formatNumber(tomorrowUnsigned.unsigned_count);
+                    updatePanel('概览卡片', () => {
+                        const autoMonitor = data.auto_monitor;
+                        const todayUnsigned = data.today_unsigned;
+                        const tomorrowUnsigned = data.tomorrow_unsigned;
+                        document.getElementById('totalCount').textContent = formatNumber(autoMonitor.total_count);
+                        document.getElementById('totalWeight').textContent = formatWeight(autoMonitor.total_weight);
+                        document.getElementById('todayUnsigned').textContent = formatNumber(todayUnsigned.unsigned_count);
+                        document.getElementById('todayTotal').textContent = formatNumber(todayUnsigned.total_orders);
+                        document.getElementById('tomorrowTotal').textContent = formatNumber(tomorrowUnsigned.total_orders);
+                        document.getElementById('tomorrowUnsigned').textContent = formatNumber(tomorrowUnsigned.unsigned_count);
+                    });
                     resolve();
                 }),
                 // 板块2: 五省统计 + 分省详情
                 new Promise(resolve => {
-                    const regions = data.auto_monitor.regions;
-                    updateRegionStats(regions);
-                    updateRegionDetails(data.region_stats);
+                    updatePanel('五省统计', () => {
+                        const regions = data.auto_monitor.regions;
+                        updateRegionStats(regions);
+                        updateRegionDetails(data.region_stats);
+                    });
                     resolve();
                 }),
                 // 板块3: 待配载订单列表
                 new Promise(resolve => {
-                    updateOrderTable(data.manual_query.orders);
+                    updatePanel('待配载订单', () => {
+                        updateOrderTable(data.manual_query.orders);
+                    });
                     resolve();
                 }),
                 // 板块4: 今日/明日未签收（并行）
                 new Promise(resolve => {
-                    updateTodayOrders(data.today_unsigned);
-                    updateTomorrowOrders(data.tomorrow_unsigned);
+                    updatePanel('未签收', () => {
+                        updateTodayOrders(data.today_unsigned);
+                        updateTomorrowOrders(data.tomorrow_unsigned);
+                    });
                     resolve();
                 }),
                 // 板块5: 近7天趋势图
                 new Promise(resolve => {
-                    if (data.weekly_weight) {
-                        updateWeeklyWeightChart(data.weekly_weight);
-                    }
+                    updatePanel('近7天趋势', () => {
+                        if (data.weekly_weight) {
+                            updateWeeklyWeightChart(data.weekly_weight);
+                        }
+                    });
                     resolve();
                 }),
                 // 板块6: 发货省份待配载订单
                 new Promise(resolve => {
-                    if (data.sender_region_orders) {
-                        updateSenderRegionOrders(data.sender_region_orders);
-                    }
+                    updatePanel('发货省份', () => {
+                        if (data.sender_region_orders) {
+                            updateSenderRegionOrders(data.sender_region_orders);
+                        }
+                    });
                     resolve();
                 }),
                 // 板块7: 今日订单统计
                 new Promise(resolve => {
-                    if (data.today_orders) {
-                        updateTodayOrdersStats(data.today_orders);
-                    }
+                    updatePanel('今日订单', () => {
+                        if (data.today_orders) {
+                            updateTodayOrdersStats(data.today_orders);
+                        }
+                    });
                     resolve();
                 })
-            ]);
+            ]).catch(err => {
+                console.error('[updateUI] Promise.all 未预期的错误:', err);
+            });
         }
 
         function updateRegionStats(regions) {
