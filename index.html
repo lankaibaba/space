@@ -2171,7 +2171,15 @@
                             <span class="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-0.5 rounded">#${idx + 1}</span>
                             <span class="font-semibold text-slate-800">${o.order_no || '--'}</span>
                         </div>
-                        <span class="badge badge-${statusColor}">${o.status || '--'}</span>
+                        <div class="flex items-center gap-2">
+                            ${o.transport_order_no ? `<button onclick="printQualityCheck('${o.transport_order_no}')" class="px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors" title="打印质检单">
+                                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>质检单
+                            </button>
+                            <button onclick="printBatchOrder('${o.transport_order_no}', '${(o.receive_name || '').replace(/'/g, "\\'")}')" class="px-3 py-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors" title="打印批次单">
+                                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>批次单
+                            </button>` : ''}
+                            <span class="badge badge-${statusColor}">${o.status || '--'}</span>
+                        </div>
                     </div>
                     <div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
                         <div><span class="text-slate-400">收货方:</span> <span class="font-medium text-slate-700">${o.receive_name || '--'}</span></div>
@@ -2196,6 +2204,16 @@
 
         function closeSearchModal() {
             document.getElementById('searchOrderModal').style.display = 'none';
+        }
+
+        function printQualityCheck(transportOrderNo) {
+            const url = `http://rep.etransfar.com:8989/webroot/decision/view/form?viewlet=16735%2Fbarcode_qm%2Fbarcode_qm2_pdf2_byPSD_NoMat.frm&PSD1=${encodeURIComponent(transportOrderNo)}`;
+            window.open(url, '_blank');
+        }
+
+        function printBatchOrder(transportOrderNo, receiveName) {
+            const url = `http://rep.etransfar.com:8989/webroot/decision/view/report?viewlet=16735%2FFAHUOPICI%2FFAHUOPICIDAN.cpt&XM=${encodeURIComponent(receiveName)}&FHD=${encodeURIComponent(transportOrderNo)}`;
+            window.open(url, '_blank');
         }
 
         // 搜索弹窗点击外部关闭
