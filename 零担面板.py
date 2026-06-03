@@ -413,7 +413,7 @@ def get_unsigned_orders_data(token, is_tomorrow=False):
     all_provinces = set()
     for item in orders:
         status = item.get("status_dk_show", "")
-        if status != "已签收":
+        if status != "已签收" and status != "已回单确认":
             # 获取完整地址信息（省市区的所有字段）
             province = item.get("province_id_show", "")  # 省
             city = item.get("city_id_show", "")  # 市
