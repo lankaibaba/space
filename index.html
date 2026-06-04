@@ -336,6 +336,12 @@
                             </svg>
                         </button>
                     </div>
+                    <button onclick="openIntransitOrdersModal()" class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all shadow-md hover:shadow-lg font-medium">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                        在途
+                    </button>
                     <button onclick="handleRefresh()" id="refreshBtn" class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all shadow-md hover:shadow-lg font-medium">
                         <svg class="w-4 h-4" id="refreshIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
@@ -404,6 +410,26 @@
             </div>
             <div class="config-content" id="networkConfigContent">
                 <div class="checkbox-group" id="networkCheckboxes"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 在途订单统计小方格 -->
+    <div class="max-w-7xl mx-auto px-6 pb-4">
+        <div class="card p-4 flex items-center justify-between" style="background: linear-gradient(135deg, #f3e8ff08 0%, #e9d5ff08 100%); border-left: 4px solid #8b5cf6;">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-md shadow-violet-200">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500">今日在途订单</p>
+                    <p class="text-2xl font-bold text-violet-600" id="intransitCount">--</p>
+                </div>
+            </div>
+            <div class="text-xs text-slate-400">
+                网点: <span id="intransitNetworks" class="font-medium text-slate-600">--</span>
             </div>
         </div>
     </div>
@@ -926,6 +952,34 @@
         </div>
     </div>
 
+    <!-- 在途订单弹窗 -->
+    <div id="intransitOrdersModal" class="fixed inset-0 bg-black/50 z-50" style="display: none;">
+        <div class="bg-white w-full h-full flex flex-col">
+            <div class="flex items-center justify-between p-4 border-b bg-violet-50 shrink-0 relative">
+                <h3 class="text-lg font-semibold text-violet-800">在途订单明细</h3>
+                <div class="flex items-center gap-3 pr-12">
+                    <span class="text-sm text-violet-600" id="intransitTotalCount">--</span>
+                    <button onclick="refreshIntransitOrders()" class="px-3 py-1.5 text-sm bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition flex items-center gap-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        刷新
+                    </button>
+                </div>
+                <!-- 右上角关闭按钮 -->
+                <button onclick="closeIntransitOrdersModal()" class="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow-lg border border-slate-200 text-slate-500 hover:text-slate-700 transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <!-- 表格 -->
+            <div id="intransitOrdersContent" class="p-4 overflow-y-auto flex-1">
+                <div class="text-center py-12 text-slate-400">点击「在途」按钮查询数据...</div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
         // 五省定义
@@ -1314,6 +1368,13 @@
                         if (data.today_orders) {
                             updateTodayOrdersStats(data.today_orders);
                         }
+                    });
+                    resolve();
+                }),
+                // 板块8: 在途订单数量
+                new Promise(resolve => {
+                    updatePanel('在途订单', () => {
+                        updateIntransitCount(data.intransit_today_count);
                     });
                     resolve();
                 })
@@ -2096,6 +2157,13 @@
             `).join('');
         }
 
+        function updateIntransitCount(count) {
+            const countEl = document.getElementById('intransitCount');
+            const networksEl = document.getElementById('intransitNetworks');
+            countEl.textContent = formatNumber(count);
+            networksEl.textContent = Array.from(selectedNetworksSet).join(', ') || '未选择';
+        }
+
         let todayOrdersProvince = '';
         let allTodayOrders = [];
 
@@ -2206,6 +2274,160 @@
             document.getElementById('searchOrderModal').style.display = 'none';
         }
 
+        // ==================== 在途订单弹窗 ====================
+        let allIntransitOrders = [];
+        let intransitAddressFilter = '';
+        let intransitStatusFilter = '';
+
+        function openIntransitOrdersModal() {
+            const modal = document.getElementById('intransitOrdersModal');
+            const content = document.getElementById('intransitOrdersContent');
+            modal.style.display = 'flex';
+            content.innerHTML = '<div class="text-center py-12"><div class="loading-spinner mx-auto mb-4"></div><p class="text-slate-600">正在查询在途订单...</p></div>';
+
+            // 读取前端网点配置
+            const networks = Array.from(selectedNetworksSet).join(',');
+            const url = networks ? `/api/intransit-orders?networks=${encodeURIComponent(networks)}` : '/api/intransit-orders';
+
+            fetch(url)
+                .then(resp => resp.json())
+                .then(result => {
+                    if (result.success) {
+                        renderIntransitOrders(result.data);
+                    } else {
+                        content.innerHTML = `<div class="text-center py-12 text-red-500">查询失败: ${result.message}</div>`;
+                    }
+                })
+                .catch(err => {
+                    content.innerHTML = `<div class="text-center py-12 text-red-500">请求失败: ${err.message}</div>`;
+                });
+        }
+
+        function refreshIntransitOrders() {
+            const content = document.getElementById('intransitOrdersContent');
+            content.innerHTML = '<div class="text-center py-12"><div class="loading-spinner mx-auto mb-4"></div><p class="text-slate-600">正在刷新在途订单...</p></div>';
+
+            const networks = Array.from(selectedNetworksSet).join(',');
+            const url = networks ? `/api/intransit-orders?networks=${encodeURIComponent(networks)}` : '/api/intransit-orders';
+
+            fetch(url)
+                .then(resp => resp.json())
+                .then(result => {
+                    if (result.success) {
+                        renderIntransitOrders(result.data);
+                    } else {
+                        content.innerHTML = `<div class="text-center py-12 text-red-500">刷新失败: ${result.message}</div>`;
+                    }
+                })
+                .catch(err => {
+                    content.innerHTML = `<div class="text-center py-12 text-red-500">刷新失败: ${err.message}</div>`;
+                });
+        }
+
+        function closeIntransitOrdersModal() {
+            document.getElementById('intransitOrdersModal').style.display = 'none';
+        }
+
+        function renderIntransitOrders(data) {
+            allIntransitOrders = data.orders || [];
+            intransitAddressFilter = '';
+            intransitStatusFilter = '';
+
+            document.getElementById('intransitTotalCount').textContent = `共 ${data.total_count} 单`;
+
+            // 直接渲染表格（含表头下拉框）
+            renderIntransitTable(data);
+        }
+
+        function applyIntransitFilter(type, value) {
+            if (type === 'address') {
+                intransitAddressFilter = value;
+            } else if (type === 'status') {
+                intransitStatusFilter = value;
+            }
+            renderIntransitTable();
+        }
+
+        function renderIntransitTable(cachedData) {
+            const content = document.getElementById('intransitOrdersContent');
+            let orders = allIntransitOrders;
+
+            if (intransitAddressFilter) {
+                orders = orders.filter(o => o.province === intransitAddressFilter);
+            }
+            if (intransitStatusFilter) {
+                orders = orders.filter(o => o.status === intransitStatusFilter);
+            }
+
+            // 提取省份和状态列表
+            const provinces = [...new Set(allIntransitOrders.map(o => o.province).filter(Boolean))].sort();
+            const statuses = cachedData ? (cachedData.statuses || [...new Set(allIntransitOrders.map(o => o.status).filter(Boolean))].sort()) : [...new Set(allIntransitOrders.map(o => o.status).filter(Boolean))].sort();
+
+            if (orders.length === 0) {
+                content.innerHTML = '<div class="text-center py-12 text-slate-400">暂无匹配的在途订单</div>';
+                return;
+            }
+
+            let html = '<div class="table-container" style="max-height:none;height:auto"><table class="data-table"><thead><tr>';
+            html += '<th>单号</th>';
+            html += '<th>司机名称</th>';
+            html += '<th>客户名称</th>';
+            html += '<th>业务员</th>';
+            // 配载单状态下拉筛选
+            html += '<th><div class="flex items-center gap-1"><span>配载单状态</span>';
+            html += `<select class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white" onchange="applyIntransitFilter('status', this.value)">`;
+            html += `<option value=""${intransitStatusFilter === '' ? ' selected' : ''}>全部</option>`;
+            statuses.forEach(s => {
+                html += `<option value="${s.replace(/"/g, '&quot;')}"${intransitStatusFilter === s ? ' selected' : ''}>${s}</option>`;
+            });
+            html += '</select></div></th>';
+            html += '<th>创建日期</th>';
+            // 收货地址省份下拉筛选
+            html += '<th><div class="flex items-center gap-1"><span>收货地址</span>';
+            html += `<select class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white" onchange="applyIntransitFilter('address', this.value)">`;
+            html += `<option value=""${intransitAddressFilter === '' ? ' selected' : ''}>全部</option>`;
+            provinces.forEach(p => {
+                html += `<option value="${p.replace(/"/g, '&quot;')}"${intransitAddressFilter === p ? ' selected' : ''}>${p}</option>`;
+            });
+            html += '</select></div></th>';
+            html += '<th>收货人</th>';
+            html += '<th>要求到货时间</th>';
+            html += '<th>重量(吨)</th>';
+            html += '</tr></thead><tbody>';
+
+            orders.forEach(o => {
+                const statusBadgeClass = getIntransitStatusBadge(o.status);
+                html += '<tr>';
+                html += `<td class="font-mono text-xs">${escapeHtml(o.order_no)}</td>`;
+                html += `<td>${escapeHtml(o.driver_name) || '-'}</td>`;
+                html += `<td>${escapeHtml(o.customer_name) || '-'}</td>`;
+                html += `<td>${escapeHtml(o.salesman) || '-'}</td>`;
+                html += `<td><span class="badge ${statusBadgeClass}">${escapeHtml(o.status) || '-'}</span></td>`;
+                html += `<td class="text-xs text-slate-500">${escapeHtml(o.created_date) || '-'}</td>`;
+                html += `<td class="text-xs max-w-[200px] truncate" title="${escapeHtml(o.receive_address)}">${escapeHtml(o.receive_address) || '-'}</td>`;
+                html += `<td>${escapeHtml(o.receiver) || '-'}</td>`;
+                html += `<td class="text-xs">${escapeHtml(o.delivery_date) || '-'}</td>`;
+                html += `<td class="font-medium">${formatWeight(o.weight)}</td>`;
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            content.innerHTML = html;
+        }
+
+        function getIntransitStatusBadge(status) {
+            if (status && status.includes('已发车')) return 'badge-warning';
+            if (status && status.includes('已配载')) return 'badge-info';
+            return 'badge-info';
+        }
+
+        function escapeHtml(str) {
+            if (!str && str !== 0) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
         function printQualityCheck(transportOrderNo) {
             const url = `http://rep.etransfar.com:8989/webroot/decision/view/form?viewlet=16735%2Fbarcode_qm%2Fbarcode_qm2_pdf2_byPSD_NoMat.frm&PSD1=${encodeURIComponent(transportOrderNo)}`;
             window.open(url, '_blank');
@@ -2219,6 +2441,11 @@
         // 搜索弹窗点击外部关闭
         document.getElementById('searchOrderModal').addEventListener('click', function(e) {
             if (e.target === this) closeSearchModal();
+        });
+
+        // 在途订单弹窗点击外部关闭
+        document.getElementById('intransitOrdersModal').addEventListener('click', function(e) {
+            if (e.target === this) closeIntransitOrdersModal();
         });
 
         function renderTodayOrdersDetail(data) {

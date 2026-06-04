@@ -71,6 +71,7 @@ cache_data = {
     "sender_region_orders": {},
     "today_orders": {},
     "kpi_penalty": {},
+    "intransit_today_count": 0,
     "last_update": None
 }
 cache_lock = threading.Lock()
@@ -617,6 +618,111 @@ def get_today_orders_data(token):
     }
 
 
+def get_intransit_today_count(token):
+    """获取在途订单数量（配载单状态=已配载/已发车确认，后台缓存用）"""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json;charset=UTF-8",
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    network_ids = [ALL_NETWORKS[n] for n in SELECTED_NETWORKS if n in ALL_NETWORKS]
+    if not network_ids:
+        return 0
+
+    payload = {
+        "debugFlag": False,
+        "developmentSystemId": None,
+        "direction": "DESC",
+        "dynamicFormCode": "stowage_sign_receipt",
+        "fromClientType": "pc",
+        "number": 0,
+        "property": "id",
+        "rules": [
+            {"field": "status_dk", "option": "IN", "values": ["WAITDELIVER", "DEPARTRUECONFIR"]},
+            {"field": "k_contract_line_a.network", "option": "IN", "values": network_ids}
+        ],
+        "size": 9999,
+        "sorts": [],
+        "specialConditions": []
+    }
+    try:
+        resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
+        orders = resp.json().get("content", [])
+        return len(orders)
+    except Exception as e:
+        print(f"查询在途订单数量失败: {e}")
+        return 0
+
+
+def get_all_intransit_orders(token, network_names):
+    """获取所有在途订单详情（弹窗用，按需查询），状态=已配载/已发车确认，按要求到货时间升序"""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json;charset=UTF-8",
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    network_ids = [ALL_NETWORKS[n] for n in network_names if n in ALL_NETWORKS]
+    if not network_ids:
+        return {"orders": [], "total_count": 0, "statuses": []}
+
+    payload = {
+        "debugFlag": False,
+        "developmentSystemId": None,
+        "direction": "ASC",
+        "dynamicFormCode": "stowage_sign_receipt",
+        "fromClientType": "pc",
+        "number": 0,
+        "property": "delivery_date",
+        "rules": [
+            {"field": "status_dk", "option": "IN", "values": ["WAITDELIVER", "DEPARTRUECONFIR"]},
+            {"field": "k_contract_line_a.network", "option": "IN", "values": network_ids}
+        ],
+        "size": 9999,
+        "sorts": [{"property": "delivery_date", "direction": "ASC"}],
+        "specialConditions": []
+    }
+    try:
+        resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=30)
+        orders = resp.json().get("content", [])
+    except Exception as e:
+        print(f"查询所有在途订单失败: {e}")
+        return {"orders": [], "total_count": 0, "statuses": []}
+
+    parsed_orders = []
+    all_statuses = set()
+    for item in orders:
+        status = item.get("status_dk_show", "") or item.get("status_dk", "")
+        all_statuses.add(status)
+
+        province = item.get("province_id_show", "") or ""
+        city = item.get("city_id_show", "") or ""
+        district = item.get("district_id_show", "") or ""
+        detailed_addr = item.get("detailed_address", "") or item.get("receive_address", "") or ""
+        full_address = f"{province}{city}{district} {detailed_addr}".strip()
+
+        parsed_orders.append({
+            "order_no": item.get("source_order_no", ""),
+            "driver_name": item.get("carrier_name", ""),
+            "customer_name": (item.get("exe_pur_order_b") or {}).get("customer", ""),
+            "salesman": item.get("salesman_name", ""),
+            "status": status,
+            "created_date": format_time(item.get("created_date")),
+            "receive_address": full_address,
+            "receiver": item.get("receiver_name", "") or item.get("receiver", ""),
+            "delivery_date": format_time(item.get("delivery_date")),
+            "weight": float(item.get("stowage_all_weight", 0) or 0),
+            "province": province,
+        })
+
+    return {
+        "orders": parsed_orders,
+        "total_count": len(parsed_orders),
+        "statuses": sorted(list(all_statuses))
+    }
+
+
 def extract_penalty_score(description):
     """从KPI处罚描述中提取扣分数"""
     if not description:
@@ -964,14 +1070,15 @@ def refresh_all_data():
             print("登录失败，跳过本次刷新")
             return False
 
-        # 并行执行：统一查询(3合1) + 未签收 + 周趋势 + 发货省份 + 今日订单
-        with ThreadPoolExecutor(max_workers=6) as executor:
+        # 并行执行：统一查询(3合1) + 未签收 + 周趋势 + 发货省份 + 今日订单 + 在途订单
+        with ThreadPoolExecutor(max_workers=7) as executor:
             future_unified = executor.submit(get_pending_orders_unified, token)
             future_today_unsigned = executor.submit(get_today_unsigned_data, token)
             future_tomorrow_unsigned = executor.submit(get_tomorrow_unsigned_data, token)
             future_weekly = executor.submit(get_weekly_weight_data, token)
             future_sender = executor.submit(get_sender_region_orders_data, token)
             future_today_orders = executor.submit(get_today_orders_data, token)
+            future_intransit = executor.submit(get_intransit_today_count, token)
 
             # 收集结果
             results = {}
@@ -994,6 +1101,7 @@ def refresh_all_data():
                 (future_weekly, "weekly_weight"),
                 (future_sender, "sender_region_orders"),
                 (future_today_orders, "today_orders"),
+                (future_intransit, "intransit_today_count"),
             ]:
                 try:
                     t2 = perf_counter()
@@ -1266,6 +1374,39 @@ def refresh_today_orders():
         "today_orders": get_today_orders_data,
     })
     return jsonify(result)
+
+
+@app.route('/api/intransit-count')
+def get_intransit_count():
+    """获取在途订单数量（从缓存读取）"""
+    with cache_lock:
+        count = cache_data.get("intransit_today_count", 0)
+        networks = list(SELECTED_NETWORKS)
+    return jsonify({
+        "success": True,
+        "count": count,
+        "networks": networks
+    })
+
+
+@app.route('/api/intransit-orders')
+def get_intransit_orders():
+    """获取所有在途订单详情（按需查询，不走缓存）"""
+    network_str = request.args.get('networks', '')
+    if network_str:
+        network_names = [n.strip() for n in network_str.split(',') if n.strip()]
+    else:
+        network_names = list(SELECTED_NETWORKS)
+
+    token = login()
+    if not token:
+        return jsonify({"success": False, "message": "登录失败"})
+
+    try:
+        data = get_all_intransit_orders(token, network_names)
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 
 def search_order_by_no(token, order_no):
