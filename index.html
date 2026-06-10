@@ -434,6 +434,60 @@
         </div>
     </div>
 
+    <!-- 重点订单跟进面板 -->
+    <div class="max-w-7xl mx-auto px-6 pb-4">
+        <div class="card overflow-hidden" style="border-left: 4px solid #ef4444;">
+            <div class="p-4 flex items-center justify-between cursor-pointer hover:bg-red-50/30 transition-colors" onclick="toggleTrackedOrdersPanel()">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shadow-md shadow-red-200">
+                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-slate-500">重点订单跟进</p>
+                        <p class="text-2xl font-bold text-red-600" id="trackedOrderCount">0</p>
+                    </div>
+                </div>
+                <svg id="trackedPanelChevron" class="w-5 h-5 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </div>
+            <div id="trackedOrdersPanelBody" style="display: none;">
+                <div class="border-t border-slate-100 p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <p class="text-sm text-slate-500">共 <span id="trackedOrderTableCount" class="font-semibold text-slate-700">0</span> 个重点订单</p>
+                        <button onclick="refreshTrackedOrders()" class="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            刷新状态
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="data-table w-full">
+                            <thead>
+                                <tr>
+                                    <th class="text-left">单号</th>
+                                    <th class="text-left">客户</th>
+                                    <th class="text-left">状态</th>
+                                    <th class="text-left">要求到货时间</th>
+                                    <th class="text-left">收货地址</th>
+                                    <th class="text-right">重量(吨)</th>
+                                    <th class="text-left" style="min-width:200px">备注</th>
+                                    <th class="text-center" style="width:60px">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trackedOrdersTableBody">
+                                <tr><td colspan="8"><div class="text-center py-8 text-slate-400">暂无重点订单，请在搜索框中搜索订单并点击 <span class="text-red-500">♥</span> 标记</div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <main class="max-w-7xl mx-auto px-6 py-6">
         <!-- 概览卡片 -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
@@ -837,28 +891,40 @@
         <!-- 今日/明日应到货（独立2列网格） -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 
-            <!-- 今日未签收 -->
+            <!-- 今日未签收（可翻页切换昨日/今日/明日） -->
             <div class="card p-6">
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                        <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path>
-                        </svg>
-                        今日应到货 - 未签收
-                    </h2>
+                    <div class="flex items-center gap-2">
+                        <button onclick="switchDeliveryDay(-1)" id="deliveryPrevBtn" class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="前一天">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                            </svg>
+                        </button>
+                        <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2" id="deliveryPanelTitle">
+                            <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path>
+                            </svg>
+                            今日应到货 - 未签收
+                        </h2>
+                        <button onclick="switchDeliveryDay(1)" id="deliveryNextBtn" class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="后一天">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                            </svg>
+                        </button>
+                    </div>
                     <div class="flex items-center gap-2">
                         <button onclick="handleRefreshModule('overview')" id="refreshOverviewBtn" class="module-refresh-btn" title="刷新">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                             </svg>
                         </button>
-                        <span class="px-3 py-1 bg-red-100 text-red-600 text-sm rounded-full" id="todayUnsignedBadge">-- 单</span>
+                        <span class="px-3 py-1 bg-red-100 text-red-600 text-sm rounded-full" id="deliveryPanelBadge">-- 单</span>
                     </div>
                 </div>
-                <div class="filter-group mb-4 flex flex-wrap gap-2" id="todayFilter">
+                <div class="filter-group mb-4 flex flex-wrap gap-2" id="deliveryPanelFilter">
                     <button class="filter-btn active" data-province="">全部</button>
                 </div>
-                <div id="todayOrders">
+                <div id="deliveryPanelOrders">
                     <div class="text-center py-12 text-slate-400">加载中...</div>
                 </div>
             </div>
@@ -987,8 +1053,11 @@
         let weeklyWeightChart = null;
         let todayProvince = '';
         let tomorrowProvince = '';
+        let activeDeliveryDay = 0;  // -1=昨天, 0=今天, 1=明天
+        let activeDeliveryProvince = '';
         let orderProvince = '';
         let senderProvince = '';
+        let cachedDeliveryData = null;
         let cachedData = null;
         let allOrders = [];
         let allSenderOrders = [];
@@ -1336,10 +1405,15 @@
                     });
                     resolve();
                 }),
-                // 板块4: 今日/明日未签收（并行）
+                // 板块4: 今日/明日/昨日未签收（并行）
                 new Promise(resolve => {
                     updatePanel('未签收', () => {
-                        updateTodayOrders(data.today_unsigned);
+                        cachedDeliveryData = {
+                            yesterday: data.yesterday_unsigned || {},
+                            today: data.today_unsigned || {},
+                            tomorrow: data.tomorrow_unsigned || {}
+                        };
+                        renderDeliveryPanel();
                         updateTomorrowOrders(data.tomorrow_unsigned);
                     });
                     resolve();
@@ -1867,6 +1941,102 @@
             `).join('');
         }
 
+        // ==================== 翻页面板：昨日/今日/明日 ====================
+        function switchDeliveryDay(delta) {
+            const newDay = activeDeliveryDay + delta;
+            if (newDay < -1 || newDay > 1) return;  // 只支持昨天/今天/明天
+            activeDeliveryDay = newDay;
+            activeDeliveryProvince = '';
+            renderDeliveryPanel();
+        }
+
+        function renderDeliveryPanel() {
+            if (!cachedDeliveryData) return;
+
+            const dayMap = {
+                '-1': { key: 'yesterday', label: '昨日应到货 - 未签收', color: 'blue', iconColor: 'text-blue-600', badgeBg: 'bg-blue-100', badgeText: 'text-blue-600', orderStyle: 'blue' },
+                '0':  { key: 'today', label: '今日应到货 - 未签收', color: 'red', iconColor: 'text-red-600', badgeBg: 'bg-red-100', badgeText: 'text-red-600', orderStyle: 'red' },
+                '1':  { key: 'tomorrow', label: '明日应到货订单', color: 'amber', iconColor: 'text-amber-600', badgeBg: 'bg-amber-100', badgeText: 'text-amber-600', orderStyle: 'amber' }
+            };
+
+            const config = dayMap[String(activeDeliveryDay)];
+            const data = cachedDeliveryData[config.key] || {};
+            const allOrders = data.unsigned_orders || [];
+
+            // 更新标题
+            const titleEl = document.getElementById('deliveryPanelTitle');
+            titleEl.innerHTML = `<svg class="w-5 h-5 ${config.iconColor}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path>
+            </svg> ${config.label}`;
+
+            // 更新徽章
+            document.getElementById('deliveryPanelBadge').textContent = `${data.unsigned_count || 0} 单`;
+            document.getElementById('deliveryPanelBadge').className = `px-3 py-1 ${config.badgeBg} ${config.badgeText} text-sm rounded-full`;
+
+            // 更新箭头按钮状态
+            document.getElementById('deliveryPrevBtn').style.visibility = activeDeliveryDay <= -1 ? 'hidden' : 'visible';
+            document.getElementById('deliveryNextBtn').style.visibility = activeDeliveryDay >= 1 ? 'hidden' : 'visible';
+
+            // 省份列表
+            const provinces = [...new Set(allOrders.map(o => o.province).filter(p => p && p !== '未知'))].sort();
+
+            // 更新筛选按钮
+            const filterEl = document.getElementById('deliveryPanelFilter');
+            let filterHtml = `<button class="filter-btn ${activeDeliveryProvince === '' ? 'active' : ''}" data-province="">全部</button>`;
+            provinces.forEach(p => {
+                filterHtml += `<button class="filter-btn ${activeDeliveryProvince === p ? 'active' : ''}" data-province="${p}">${p}</button>`;
+            });
+            filterEl.innerHTML = filterHtml;
+
+            filterEl.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.onclick = () => {
+                    activeDeliveryProvince = btn.dataset.province;
+                    filterEl.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    renderDeliveryOrders(allOrders, config);
+                };
+            });
+
+            renderDeliveryOrders(allOrders, config);
+        }
+
+        function renderDeliveryOrders(allOrders, config) {
+            const container = document.getElementById('deliveryPanelOrders');
+            let orders = allOrders;
+            if (activeDeliveryProvince && activeDeliveryProvince !== '全部') {
+                orders = orders.filter(o => o.province === activeDeliveryProvince);
+            }
+
+            if (orders.length === 0) {
+                container.innerHTML = `<div class="text-center py-12">
+                    <svg class="w-12 h-12 mx-auto mb-2 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <p class="text-slate-400">暂无未签收订单</p>
+                </div>`;
+                return;
+            }
+
+            const styleClass = config.orderStyle;
+            container.innerHTML = orders.map(o => `
+                <div class="order-item ${styleClass}">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-mono text-sm font-medium">${o.order_no || '无'}</span>
+                        <span class="px-2 py-0.5 bg-${styleClass === 'blue' ? 'blue' : styleClass === 'amber' ? 'amber' : 'red'}-100 text-${styleClass === 'blue' ? 'blue' : styleClass === 'amber' ? 'amber' : 'red'}-600 text-xs rounded">${o.status || '未知'}</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-sm">
+                        <span class="font-medium">${o.receive_name || '无'}</span>
+                        <span class="text-slate-600">${o.receiver_phone || '无'}</span>
+                    </div>
+                    <p class="text-sm text-slate-600 font-medium">${o.province || ''}${o.city || ''}${o.district || ''}</p>
+                    ${o.detailed_address ? `<p class="text-xs text-slate-500">${o.detailed_address}</p>` : ''}
+                    ${o.signed_weight ? `<p class="text-xs text-${styleClass === 'blue' ? 'blue' : styleClass === 'amber' ? 'amber' : 'red'}-600 font-medium">⚖️ ${formatWeight(o.signed_weight)} 吨</p>` : ''}
+                    ${o.receive_time ? `<p class="text-xs text-slate-400 mt-1">🕐 ${o.receive_time}</p>` : ''}
+                    ${o.delivery_date ? `<p class="text-xs text-${styleClass === 'blue' ? 'blue' : styleClass === 'amber' ? 'amber' : 'red'}-600 font-medium mt-1">需求到货: ${o.delivery_date}</p>` : ''}
+                </div>
+            `).join('');
+        }
+
         let kpiCurrentTab = 'previous';
         let kpiData = null;
         let kpiContractFilterSet = new Set(); // 空Set = 全选状态
@@ -2229,9 +2399,12 @@
         }
 
         function renderSearchResults(orders, container) {
+            // 保存当前搜索结果供红心标记使用
+            window._currentSearchResults = orders;
             let html = '<div class="space-y-4">';
             orders.forEach((o, idx) => {
                 const statusColor = o.status === '已签收' ? 'green' : o.status === '已发货' ? 'blue' : 'amber';
+                const isTracked = isOrderTracked(o.order_no);
                 html += `
                 <div class="border border-slate-200 rounded-xl overflow-hidden">
                     <div class="bg-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-100">
@@ -2246,6 +2419,11 @@
                             <button onclick="printBatchOrder('${o.transport_order_no}', '${(o.receive_name || '').replace(/'/g, "\\'")}')" class="px-3 py-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors" title="打印批次单">
                                 <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>批次单
                             </button>` : ''}
+                            <button onclick="toggleTrackOrderFromSearch(${idx})" class="p-1.5 rounded-lg transition-colors ${isTracked ? 'text-red-500 bg-red-50 hover:bg-red-100' : 'text-slate-300 hover:text-red-400 hover:bg-red-50'}" title="${isTracked ? '取消标记' : '标记为重点订单'}">
+                                <svg class="w-5 h-5" fill="${isTracked ? 'currentColor' : 'none'}" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path ${isTracked ? '' : 'stroke-linecap="round" stroke-linejoin="round" stroke-width="2"'} d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"></path>
+                                </svg>
+                            </button>
                             <span class="badge badge-${statusColor}">${o.status || '--'}</span>
                         </div>
                     </div>
@@ -2447,6 +2625,181 @@
         document.getElementById('intransitOrdersModal').addEventListener('click', function(e) {
             if (e.target === this) closeIntransitOrdersModal();
         });
+
+        // ==================== 重点订单跟进 ====================
+        const TRACKED_ORDERS_KEY = 'tracked_orders';
+
+        function getTrackedOrders() {
+            try { return JSON.parse(localStorage.getItem(TRACKED_ORDERS_KEY) || '[]'); }
+            catch (e) { return []; }
+        }
+
+        function saveTrackedOrders(orders) {
+            localStorage.setItem(TRACKED_ORDERS_KEY, JSON.stringify(orders));
+        }
+
+        function isOrderTracked(orderNo) {
+            return getTrackedOrders().some(o => o.order_no === orderNo);
+        }
+
+        function toggleTrackOrderFromSearch(idx) {
+            const results = window._currentSearchResults;
+            if (!results || !results[idx]) return;
+            const o = results[idx];
+            const orders = getTrackedOrders();
+            const existIdx = orders.findIndex(t => t.order_no === o.order_no);
+            if (existIdx >= 0) {
+                orders.splice(existIdx, 1);
+            } else {
+                orders.push({
+                    order_no: o.order_no,
+                    customer_name: o.customer_group || '',
+                    status: o.status || '',
+                    delivery_date: o.delivery_date || '',
+                    receive_address: [o.province, o.city, o.district].filter(Boolean).join('') + ' ' + (o.detailed_address || ''),
+                    weight: o.stowage_weight ? (o.stowage_weight / 1000).toFixed(2) : '0.00',
+                    remark: '',
+                    marked_at: Date.now()
+                });
+            }
+            saveTrackedOrders(orders);
+            updateTrackedOrderCount();
+            // 刷新搜索结果中的红心状态
+            const content = document.getElementById('searchOrderContent');
+            if (window._currentSearchResults) {
+                renderSearchResults(window._currentSearchResults, content);
+            }
+        }
+
+        function deleteTrackedOrder(orderNo) {
+            if (!confirm('确定移除此订单？')) return;
+            const orders = getTrackedOrders().filter(o => o.order_no !== orderNo);
+            saveTrackedOrders(orders);
+            renderTrackedOrdersTable();
+            updateTrackedOrderCount();
+        }
+
+        function updateTrackedOrderRemark(el) {
+            const orderNo = el.getAttribute('data-order-no');
+            const orders = getTrackedOrders();
+            const order = orders.find(o => o.order_no === orderNo);
+            if (order) {
+                order.remark = el.value;
+                saveTrackedOrders(orders);
+            }
+        }
+
+        function toggleTrackedOrdersPanel() {
+            const body = document.getElementById('trackedOrdersPanelBody');
+            const chevron = document.getElementById('trackedPanelChevron');
+            if (body.style.display === 'none') {
+                body.style.display = 'block';
+                chevron.style.transform = 'rotate(180deg)';
+                renderTrackedOrdersTable();
+            } else {
+                body.style.display = 'none';
+                chevron.style.transform = '';
+            }
+        }
+
+        function updateTrackedOrderCount() {
+            const count = getTrackedOrders().length;
+            const countEl = document.getElementById('trackedOrderCount');
+            const tableCount = document.getElementById('trackedOrderTableCount');
+            if (countEl) countEl.textContent = count;
+            if (tableCount) tableCount.textContent = count;
+        }
+
+        async function refreshTrackedOrders() {
+            const orders = getTrackedOrders();
+            if (orders.length === 0) return;
+            const orderNos = orders.map(o => o.order_no);
+            const tbody = document.getElementById('trackedOrdersTableBody');
+            tbody.innerHTML = '<tr><td colspan="8"><div class="text-center py-8"><div class="loading-spinner mx-auto mb-3"></div><p class="text-slate-500 text-sm">正在刷新订单信息...</p></div></td></tr>';
+
+            try {
+                const resp = await fetch('/api/tracked-orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order_nos: orderNos })
+                });
+                const result = await resp.json();
+                if (result.success) {
+                    const apiOrderNos = new Set(result.data.map(d => d.order_no));
+                    const remarkMap = {};
+                    const markedAtMap = {};
+                    orders.forEach(o => {
+                        remarkMap[o.order_no] = o.remark || '';
+                        markedAtMap[o.order_no] = o.marked_at || Date.now();
+                    });
+                    const merged = result.data.map(item => ({
+                        order_no: item.order_no,
+                        customer_name: item.customer_name || item.customer_group || '',
+                        status: item.status || '',
+                        delivery_date: item.delivery_date || '',
+                        receive_address: item.receive_address || '',
+                        weight: item.weight || 0,
+                        remark: remarkMap[item.order_no] || '',
+                        marked_at: markedAtMap[item.order_no] || Date.now()
+                    }));
+                    // 保留API未返回的订单（可能已从系统删除）
+                    const notFound = orders.filter(o => !apiOrderNos.has(o.order_no));
+                    notFound.forEach(o => { o.status = o.status || '(未找到)'; });
+                    const all = [...merged, ...notFound];
+                    saveTrackedOrders(all);
+                    updateTrackedOrderCount();
+                    renderTrackedOrdersTable();
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="8"><div class="text-center py-8 text-red-500">刷新失败: ${escapeHtml(result.message)}</div></td></tr>`;
+                }
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="8"><div class="text-center py-8 text-red-500">网络错误: ${escapeHtml(err.message)}</div></td></tr>`;
+            }
+        }
+
+        function renderTrackedOrdersTable() {
+            const orders = getTrackedOrders();
+            const tbody = document.getElementById('trackedOrdersTableBody');
+            if (!tbody) return;
+            if (orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8"><div class="text-center py-8 text-slate-400">暂无重点订单，请在搜索框中搜索订单并点击 <span class="text-red-500">♥</span> 标记</div></td></tr>';
+                return;
+            }
+            orders.sort((a, b) => (b.marked_at || 0) - (a.marked_at || 0));
+            let html = '';
+            orders.forEach(o => {
+                const statusClass = o.status === '已签收' ? 'badge-green' :
+                    (o.status && o.status.includes('已发车')) ? 'badge-warning' :
+                    (o.status && o.status.includes('已配载')) ? 'badge-info' : 'badge-info';
+                const weight = typeof o.weight === 'number' ? o.weight.toFixed(2) : (parseFloat(o.weight) || 0).toFixed(2);
+                html += `<tr>
+                    <td class="font-mono text-xs">${escapeHtml(o.order_no)}</td>
+                    <td>${escapeHtml(o.customer_name) || '--'}</td>
+                    <td><span class="badge ${statusClass}">${escapeHtml(o.status) || '--'}</span></td>
+                    <td class="text-sm">${escapeHtml(o.delivery_date) || '--'}</td>
+                    <td class="text-sm max-w-[200px] truncate" title="${escapeHtml(o.receive_address || '')}">${escapeHtml(o.receive_address) || '--'}</td>
+                    <td class="text-sm text-right">${weight}</td>
+                    <td>
+                        <textarea data-order-no="${escapeHtml(o.order_no)}"
+                            class="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:border-red-300 focus:ring-1 focus:ring-red-200 outline-none resize-none bg-white hover:border-slate-300 transition-colors"
+                            rows="2" placeholder="添加备注..."
+                            onblur="updateTrackedOrderRemark(this)">${escapeHtml(o.remark || '')}</textarea>
+                    </td>
+                    <td class="text-center">
+                        <button onclick="deleteTrackedOrder('${escapeHtml(o.order_no).replace(/'/g, "\\'")}')"
+                            class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="取消标记">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </button>
+                    </td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+
+        // 页面加载时初始化重点订单计数
+        updateTrackedOrderCount();
 
         function renderTodayOrdersDetail(data) {
             allTodayOrders = data.detail_orders || [];

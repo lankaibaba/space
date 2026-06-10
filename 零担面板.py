@@ -68,6 +68,7 @@ cache_data = {
     "region_stats": {},
     "today_unsigned": {},
     "tomorrow_unsigned": {},
+    "yesterday_unsigned": {},
     "sender_region_orders": {},
     "today_orders": {},
     "kpi_penalty": {},
@@ -361,7 +362,10 @@ def get_today_utc_range():
     ]
 
 
-def get_unsigned_orders_data(token, is_tomorrow=False):
+def get_unsigned_orders_data(token, day_offset=0):
+    """获取未签收订单数据
+    day_offset: 0=今天, 1=明天, -1=昨天
+    """
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json;charset=UTF-8",
@@ -371,15 +375,9 @@ def get_unsigned_orders_data(token, is_tomorrow=False):
     # 使用北京时间计算日期
     bj_tz = timezone(timedelta(hours=8))
     now_bj = datetime.now(bj_tz)
-
-    if is_tomorrow:
-        tomorrow_bj = (now_bj + timedelta(days=1)).date()
-        start = datetime(tomorrow_bj.year, tomorrow_bj.month, tomorrow_bj.day, 0, 0, 0) - timedelta(hours=8)
-        end = datetime(tomorrow_bj.year, tomorrow_bj.month, tomorrow_bj.day, 23, 59, 59) - timedelta(hours=8)
-    else:
-        today_bj = now_bj.date()
-        start = datetime(today_bj.year, today_bj.month, today_bj.day, 0, 0, 0) - timedelta(hours=8)
-        end = datetime(today_bj.year, today_bj.month, today_bj.day, 23, 59, 59) - timedelta(hours=8)
+    target_date = (now_bj + timedelta(days=day_offset)).date()
+    start = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0) - timedelta(hours=8)
+    end = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59) - timedelta(hours=8)
 
     # 获取网点ID列表
     network_ids = [ALL_NETWORKS[n] for n in SELECTED_NETWORKS if n in ALL_NETWORKS]
@@ -456,11 +454,15 @@ def get_unsigned_orders_data(token, is_tomorrow=False):
 
 
 def get_today_unsigned_data(token):
-    return get_unsigned_orders_data(token, is_tomorrow=False)
+    return get_unsigned_orders_data(token, day_offset=0)
 
 
 def get_tomorrow_unsigned_data(token):
-    return get_unsigned_orders_data(token, is_tomorrow=True)
+    return get_unsigned_orders_data(token, day_offset=1)
+
+
+def get_yesterday_unsigned_data(token):
+    return get_unsigned_orders_data(token, day_offset=-1)
 
 
 def query_orders_by_sender_region(token, region):
@@ -1071,10 +1073,11 @@ def refresh_all_data():
             return False
 
         # 并行执行：统一查询(3合1) + 未签收 + 周趋势 + 发货省份 + 今日订单 + 在途订单
-        with ThreadPoolExecutor(max_workers=7) as executor:
+        with ThreadPoolExecutor(max_workers=8) as executor:
             future_unified = executor.submit(get_pending_orders_unified, token)
             future_today_unsigned = executor.submit(get_today_unsigned_data, token)
             future_tomorrow_unsigned = executor.submit(get_tomorrow_unsigned_data, token)
+            future_yesterday_unsigned = executor.submit(get_yesterday_unsigned_data, token)
             future_weekly = executor.submit(get_weekly_weight_data, token)
             future_sender = executor.submit(get_sender_region_orders_data, token)
             future_today_orders = executor.submit(get_today_orders_data, token)
@@ -1098,6 +1101,7 @@ def refresh_all_data():
             for future, key in [
                 (future_today_unsigned, "today_unsigned"),
                 (future_tomorrow_unsigned, "tomorrow_unsigned"),
+                (future_yesterday_unsigned, "yesterday_unsigned"),
                 (future_weekly, "weekly_weight"),
                 (future_sender, "sender_region_orders"),
                 (future_today_orders, "today_orders"),
@@ -1271,6 +1275,22 @@ def get_tomorrow():
         return jsonify(data)
 
 
+@app.route('/api/yesterday-unsigned')
+def get_yesterday():
+    province = request.args.get('province', '')
+    with cache_lock:
+        data = cache_data.get("yesterday_unsigned", {})
+        if province and province != '全部':
+            orders = [o for o in data.get("unsigned_orders", []) if o.get("province") == province]
+            return jsonify({
+                "total_orders": data.get("total_orders", 0),
+                "unsigned_count": len(orders),
+                "unsigned_orders": orders,
+                "provinces": data.get("provinces", [])
+            })
+        return jsonify(data)
+
+
 @app.route('/api/weekly-weight')
 def get_weekly_weight():
     """获取近7天订单重量数据"""
@@ -1312,11 +1332,12 @@ def _login_and_refresh(refresh_funcs):
 
 @app.route('/api/refresh/overview', methods=['POST'])
 def refresh_overview():
-    """单独刷新概览卡片 + 今日/明日未签收"""
+    """单独刷新概览卡片 + 今日/明日/昨日未签收"""
     result = _login_and_refresh({
         "auto_monitor": get_auto_monitor_data,
         "today_unsigned": get_today_unsigned_data,
         "tomorrow_unsigned": get_tomorrow_unsigned_data,
+        "yesterday_unsigned": get_yesterday_unsigned_data,
     })
     return jsonify(result)
 
@@ -1407,6 +1428,47 @@ def get_intransit_orders():
         return jsonify({"success": True, "data": data})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
+
+
+@app.route('/api/tracked-orders', methods=['POST'])
+def get_tracked_orders():
+    """批量查询重点订单的最新信息（保留备注由前端localStorage管理）"""
+    data = request.get_json(silent=True) or {}
+    order_nos = data.get('order_nos', [])
+    if not order_nos:
+        return jsonify({"success": False, "message": "请提供订单号列表"})
+    token = login()
+    if not token:
+        return jsonify({"success": False, "message": "登录失败"})
+
+    results = []
+    seen = set()
+    for order_no in order_nos:
+        try:
+            items = search_order_by_no(token, order_no)
+            for item in items:
+                src_no = item.get("source_order_no", "")
+                if src_no in seen:
+                    continue
+                seen.add(src_no)
+                exe_pur = item.get("exe_pur_order_b") or {}
+                results.append({
+                    "order_no": src_no,
+                    "transport_order_no": item.get("order_no", ""),
+                    "customer_name": exe_pur.get("customer", ""),
+                    "customer_group": exe_pur.get("customer_group", ""),
+                    "driver_name": item.get("carrier_name", ""),
+                    "salesman": item.get("salesman_name", ""),
+                    "status": item.get("status_dk_show", ""),
+                    "delivery_date": format_time(item.get("delivery_date")),
+                    "receive_address": f"{item.get('province_id_show', '') or ''}{item.get('city_id_show', '') or ''}{item.get('district_id_show', '') or ''} {item.get('detailed_address', '') or item.get('receive_address', '') or ''}".strip(),
+                    "weight": float(item.get("stowage_all_weight", 0) or 0),
+                    "network": (item.get("k_contract_line_a") or {}).get("network_show", ""),
+                })
+        except Exception as e:
+            print(f"查询重点订单 {order_no} 失败: {e}")
+
+    return jsonify({"success": True, "data": results})
 
 
 def search_order_by_no(token, order_no):
