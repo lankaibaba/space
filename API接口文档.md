@@ -246,8 +246,11 @@ MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCctQTweXAiaQ3ct5bhj6nyisOQiGmgC/hUdK+QO9I9
     "region_stats": {},
     "today_unsigned": {},
     "tomorrow_unsigned": {},
+    "yesterday_unsigned": {},
     "sender_region_orders": {},
+    "today_orders": {},
     "kpi_penalty": {},
+    "intransit_today_count": 0,
     "last_update": "2026-05-27 10:00:00"
   },
   "selected_provinces": ["湖南", "湖北", "新疆", "河北", "安徽"],
@@ -271,13 +274,16 @@ MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCctQTweXAiaQ3ct5bhj6nyisOQiGmgC/hUdK+QO9I9
 
 ---
 
-### 3.3 今/明日未签收订单
+### 3.3 今/明/昨日未签收订单
 
 #### `GET /api/today-unsigned?province=<省份>`
 #### `GET /api/tomorrow-unsigned?province=<省份>`
+#### `GET /api/yesterday-unsigned?province=<省份>`
 
 **查询参数**:
 - `province`: 可选，省份名称筛选，如"湖南"，不传或"全部"返回所有
+
+**说明**: 昨日未签收指需求到货时间为昨天的未签收/未回单确认订单。
 
 **响应字段**:
 ```json
@@ -490,13 +496,145 @@ MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCctQTweXAiaQ3ct5bhj6nyisOQiGmgC/hUdK+QO9I9
 | 接口 | 方法 | 说明 |
 |------|------|------|
 | `/api/refresh` | POST | 全局刷新，可传入 `{"provinces": [...], "networks": [...]}` |
-| `/api/refresh/overview` | POST | 刷新概览卡片 + 今日/明日未签收 |
+| `/api/refresh/overview` | POST | 刷新概览卡片 + 今日/明日/昨日未签收 |
 | `/api/refresh/pending-detail` | POST | 刷新待配载订单 + 分省统计 |
 | `/api/refresh/sender-region` | POST | 刷新发货省份待配载订单 |
 | `/api/refresh/weekly` | POST | 刷新近7天趋势图 |
 | `/api/refresh/kpi` | POST | 刷新KPI处罚数据 |
 | `/api/refresh-manual` | POST | 手动刷新待配载订单数据 |
 | `/api/refresh-pending` | POST | 仅刷新待配载订单相关数据 |
+
+---
+
+### 3.12 订单搜索
+
+#### `GET /api/search-order?order_no=<订单号>`
+
+按订单号搜索配载单明细（模糊匹配）。
+
+**响应字段**:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "order_no": "PO20260527001",
+      "transport_order_no": "YT20260527001",
+      "receive_name": "长沙某公司",
+      "receiver_phone": "13800138000",
+      "contact_person": "张三",
+      "customer_group": "VIP客户",
+      "driver": "李四",
+      "license_plate": "湘A12345",
+      "province": "湖南",
+      "city": "长沙",
+      "district": "岳麓区",
+      "detailed_address": "麓谷大道100号",
+      "status": "已配载",
+      "stowage_weight": 1500.0,
+      "delivery_date": "2026-05-27 08:00:00",
+      "receive_time": "2026-05-27 10:00:00",
+      "order_date": "2026-05-20 16:00:00",
+      "network": "零担"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+### 3.13 在途订单
+
+#### `GET /api/intransit-count`
+
+获取在途订单数量（从缓存读取）。
+
+**响应字段**:
+```json
+{
+  "success": true,
+  "count": 45,
+  "networks": ["零担", "江南"]
+}
+```
+
+#### `GET /api/intransit-orders?networks=<网点列表>`
+
+获取所有在途订单详情（按需实时查询，不走缓存）。
+
+**查询参数**:
+- `networks`: 可选，网点名称逗号分隔，如"零担,江南"，不传使用已选网点
+
+**响应字段**:
+```json
+{
+  "success": true,
+  "data": {
+    "orders": [
+      {
+        "order_no": "PO20260527001",
+        "driver_name": "李四",
+        "customer_name": "长沙某公司",
+        "salesman": "王五",
+        "status": "已配载",
+        "created_date": "2026-05-20 16:00:00",
+        "receive_address": "湖南长沙岳麓区 麓谷大道100号",
+        "receiver": "张三",
+        "delivery_date": "2026-05-27 08:00:00",
+        "weight": 1.5,
+        "province": "湖南"
+      }
+    ],
+    "total_count": 45,
+    "statuses": ["已配载", "已发车确认"]
+  }
+}
+```
+
+**筛选规则**: 状态为 `WAITDELIVER` 或 `DEPARTRUECONFIR`（已配载/已发车确认），按 `delivery_date` ASC 排序。
+
+---
+
+### 3.14 重点订单跟进
+
+#### `POST /api/tracked-orders`
+
+批量查询重点订单的最新信息。前端通过 localStorage 管理标记和备注。
+
+**请求体**:
+```json
+{
+  "order_nos": ["PO20260527001", "PO20260528002"]
+}
+```
+
+**响应字段**:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "order_no": "PO20260527001",
+      "transport_order_no": "YT20260527001",
+      "customer_name": "长沙某公司",
+      "customer_group": "VIP客户",
+      "driver_name": "李四",
+      "salesman": "王五",
+      "status": "已配载",
+      "delivery_date": "2026-05-27 08:00:00",
+      "receive_address": "湖南长沙岳麓区 麓谷大道100号",
+      "weight": 1.5,
+      "network": "零担"
+    }
+  ]
+}
+```
+
+**说明**:
+- 备注（remark）字段由前端 localStorage 管理，后端不存储
+- 标记和排序（按标记时间倒序）均由前端实现
+- 刷新时保留备注文字，仅更新订单状态和配载信息
 
 ---
 
@@ -617,5 +755,5 @@ resp = requests.post("http://localhost:5000/api/refresh", json={
 
 - 登录失败: Token 为 `None`，需检查账号密码
 - 查询超时: 默认超时 15-20 秒
-- 未签收判断: `status_dk_show != "已签收"`
+- 未签收判断: `status_dk_show != "已签收"` 且 `status_dk_show != "已回单确认"`
 - KPI扣分提取: 从 `problem_descripetion` 字段正则匹配，格式如"扣绩效考核5分"
