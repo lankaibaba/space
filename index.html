@@ -121,16 +121,11 @@
             background: rgba(255,255,255,0.15);
         }
         .config-content {
-            max-height: 500px;
-            overflow: hidden;
-            transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
-            opacity: 1;
-        }
-        .config-content.collapsed {
             max-height: 0;
-            padding-top: 0;
-            padding-bottom: 0;
+            overflow: hidden;
             opacity: 0;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
+            padding-top: 8px;
         }
         .checkbox-group {
             display: flex;
@@ -366,7 +361,7 @@
                     </svg>
                 </div>
             </div>
-            <div id="provinceConfigContent" class="px-4 pb-3" style="max-height: 500px; overflow: hidden; transition: max-height 0.3s ease;">
+            <div id="provinceConfigContent" class="config-content px-4 pb-3">
                 <div class="checkbox-group" id="provinceCheckboxes"></div>
             </div>
         </div>
@@ -392,7 +387,7 @@
                     </svg>
                 </div>
             </div>
-            <div id="networkConfigContent" class="px-4 pb-3" style="max-height: 500px; overflow: hidden; transition: max-height 0.3s ease;">
+            <div id="networkConfigContent" class="config-content px-4 pb-3">
                 <div class="checkbox-group" id="networkCheckboxes"></div>
             </div>
         </div>
@@ -3166,12 +3161,16 @@
             const icon = document.getElementById(type + 'CollapseIcon');
             const content = document.getElementById(type + 'ConfigContent');
             
-            if (content.classList.contains('collapsed')) {
-                content.classList.remove('collapsed');
-                icon.style.transform = 'rotate(90deg)';
-            } else {
-                content.classList.add('collapsed');
+            if (content.style.maxHeight && content.style.maxHeight !== '0px') {
+                // 当前是展开的，折叠
+                content.style.maxHeight = '0';
+                content.style.opacity = '0';
                 icon.style.transform = 'rotate(0deg)';
+            } else {
+                // 当前是折叠的，展开
+                content.style.maxHeight = '200px';
+                content.style.opacity = '1';
+                icon.style.transform = 'rotate(90deg)';
             }
         }
 
