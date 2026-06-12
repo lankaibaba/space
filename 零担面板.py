@@ -50,11 +50,14 @@ ALL_NETWORKS = {
     "非凡": "823427370722664448",
     "讯服": "823427183694450688",
     "江北": "713226114964791296",
-    "零担": "740441957821714432"
+    "零担": "740441957821714432",
+    "兴兴": "823426759423827968",
+    "广宏": "823426927623806976"
 }
 # 默认选中的网点
 SELECTED_NETWORKS = ["零担"]
 
+BASE_URL = "https://sdm.etransfar.com/jbl/api"
 LOGIN_URL = "https://sdm.etransfar.com/jbl/api/login/?_allow_anonymous=true"
 QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/purchase_order/page"
 RECEIPT_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/receive_management/page"
@@ -1862,10 +1865,7 @@ def api_order_analysis_query():
         if delivery_start and delivery_end:
             rules.append({"field": "delivery_date", "option": "BTS", "values": [delivery_start, delivery_end]})
         
-        # 物流时效
-        logistics = data.get('logistics_time')
-        if logistics and logistics != '全部':
-            rules.append({"field": "logistics_time", "option": "EQ", "values": [logistics]})
+        # 物流时效 - 注意：物流时效字段不支持API直接筛选，需要前端过滤
         
         # 配载单状态
         status = data.get('status')

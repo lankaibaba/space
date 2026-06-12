@@ -106,35 +106,25 @@
         .table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .table-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         .config-panel {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 16px;
-            padding: 0;
-            margin-bottom: 24px;
-            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.25);
+            border-radius: 12px;
             overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         .config-header {
-            padding: 16px 20px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
         }
         .config-header:hover {
-            background: rgba(255,255,255,0.05);
-        }
-        .collapse-icon {
-            transition: transform 0.3s ease;
-        }
-        .collapse-icon.collapsed {
-            transform: rotate(-90deg);
+            background: rgba(255,255,255,0.15);
         }
         .config-content {
-            padding: 0 20px 20px 20px;
             max-height: 500px;
             overflow: hidden;
-            transition: all 0.3s ease;
+            transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+            opacity: 1;
         }
         .config-content.collapsed {
             max-height: 0;
@@ -145,39 +135,42 @@
         .checkbox-group {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
+            padding-top: 8px;
         }
         .checkbox-item {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 14px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 24px;
+            gap: 6px;
+            padding: 6px 12px;
+            background: rgba(255,255,255,0.25);
+            border-radius: 20px;
             cursor: pointer;
-            transition: all 0.25s;
+            transition: all 0.2s;
             color: white;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
             border: 1.5px solid transparent;
+            backdrop-filter: blur(4px);
         }
         .checkbox-item:hover {
-            background: rgba(255,255,255,0.3);
-            transform: scale(1.05);
+            background: rgba(255,255,255,0.4);
+            transform: translateY(-1px);
         }
         .checkbox-item.selected {
             background: rgba(255,255,255,0.95);
-            color: #667eea;
-            border-color: rgba(255,255,255,0.5);
+            color: #334155;
+            border-color: rgba(255,255,255,0.8);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .checkbox-item input {
             display: none;
         }
         .checkbox-item .checkmark {
-            width: 18px;
-            height: 18px;
-            border: 2px solid rgba(255,255,255,0.6);
-            border-radius: 6px;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.7);
+            border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -185,12 +178,12 @@
             flex-shrink: 0;
         }
         .checkbox-item.selected .checkmark {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
             border-color: transparent;
         }
         .checkbox-item .checkmark svg {
-            width: 11px;
-            height: 11px;
+            width: 10px;
+            height: 10px;
             stroke: white;
             stroke-width: 3;
             opacity: 0;
@@ -354,61 +347,52 @@
     </header>
 
     <!-- 省份配置面板 -->
-    <div class="max-w-7xl mx-auto px-6 py-4">
-        <div class="config-panel">
-            <div class="config-header" onclick="toggleConfig('province')">
-                <div class="flex items-center gap-3">
-                    <svg class="collapse-icon text-white" id="provinceCollapseIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+    <div class="max-w-7xl mx-auto px-6 py-2">
+        <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-md">
+            <div class="flex items-center justify-between px-4 py-2.5 cursor-pointer" onclick="toggleConfig('province')">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                    </svg>
-                    <span class="text-white font-semibold">省份配置</span>
-                    <span class="text-white/70 text-sm">（勾选要查询的省份）</span>
+                    <span class="text-white font-medium text-sm">省份配置</span>
+                    <span class="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">已选 <span id="selectedCount">0</span></span>
                 </div>
-                <div class="flex items-center gap-3">
-                    <span class="text-white/70 text-sm">已选 <span id="selectedCount" class="font-bold text-white">0</span> 个省份</span>
-                    <button onclick="event.stopPropagation(); saveProvinces()" id="saveProvinceBtn" class="px-4 py-1.5 bg-white text-purple-600 rounded-lg hover:bg-white/90 transition text-sm font-medium flex items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                        </svg>
+                <div class="flex items-center gap-2">
+                    <button onclick="event.stopPropagation(); saveProvinces()" id="saveProvinceBtn" class="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-md text-xs font-medium transition">
                         保存并刷新
                     </button>
+                    <svg class="w-4 h-4 text-white/80 transition-transform" id="provinceCollapseIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
                 </div>
             </div>
-            <div class="config-content" id="provinceConfigContent">
+            <div id="provinceConfigContent" class="px-4 pb-3" style="max-height: 500px; overflow: hidden; transition: max-height 0.3s ease;">
                 <div class="checkbox-group" id="provinceCheckboxes"></div>
             </div>
         </div>
     </div>
     
     <!-- 网点配置面板 -->
-    <div class="max-w-7xl mx-auto px-6 pb-4">
-        <div class="config-panel" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-            <div class="config-header" onclick="toggleConfig('network')">
-                <div class="flex items-center gap-3">
-                    <svg class="collapse-icon text-white" id="networkCollapseIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                    </svg>
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div class="max-w-7xl mx-auto px-6 pb-2">
+        <div class="bg-gradient-to-r from-pink-500 to-rose-500 rounded-xl shadow-md">
+            <div class="flex items-center justify-between px-4 py-2.5 cursor-pointer" onclick="toggleConfig('network')">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
                     </svg>
-                    <span class="text-white font-semibold">网点配置</span>
-                    <span class="text-white/70 text-sm">（勾选要查询的网点，影响近7天趋势和今日/明日到货数据）</span>
+                    <span class="text-white font-medium text-sm">网点配置</span>
+                    <span class="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">已选 <span id="selectedNetworkCount">0</span></span>
                 </div>
-                <div class="flex items-center gap-3">
-                    <span class="text-white/70 text-sm">已选 <span id="selectedNetworkCount" class="font-bold text-white">0</span> 个网点</span>
-                    <button onclick="event.stopPropagation(); saveNetworks()" id="saveNetworkBtn" class="px-4 py-1.5 bg-white text-pink-600 rounded-lg hover:bg-white/90 transition text-sm font-medium flex items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                        </svg>
+                <div class="flex items-center gap-2">
+                    <button onclick="event.stopPropagation(); saveNetworks()" id="saveNetworkBtn" class="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-md text-xs font-medium transition">
                         保存并刷新
                     </button>
+                    <svg class="w-4 h-4 text-white/80 transition-transform" id="networkCollapseIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
                 </div>
             </div>
-            <div class="config-content" id="networkConfigContent">
+            <div id="networkConfigContent" class="px-4 pb-3" style="max-height: 500px; overflow: hidden; transition: max-height 0.3s ease;">
                 <div class="checkbox-group" id="networkCheckboxes"></div>
             </div>
         </div>
@@ -946,6 +930,126 @@
                 <div id="tomorrowOrders">
                     <div class="text-center py-12 text-slate-400">加载中...</div>
                 </div>
+            </div>
+        </div>
+
+        <!-- 订单分析模块 -->
+        <div class="card p-6 mt-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    📊 订单分析
+                </h2>
+            </div>
+            
+            <!-- 筛选条件 -->
+            <div class="bg-slate-50 rounded-xl p-4 mb-4">
+                <div class="flex flex-wrap gap-4 items-end">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-500">网点</label>
+                        <select id="analysisNetwork" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">全部网点</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-500">创建时间-开始</label>
+                        <input type="date" id="analysisCreatedStart" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-500">创建时间-结束</label>
+                        <input type="date" id="analysisCreatedEnd" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-500">要求到货-开始</label>
+                        <input type="date" id="analysisDeliveryStart" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-500">要求到货-结束</label>
+                        <input type="date" id="analysisDeliveryEnd" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-500">物流时效</label>
+                        <select id="analysisLogistics" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                            <option value="">全部</option>
+                            <option value="准时">准时</option>
+                            <option value="延误">延误</option>
+                            <option value="未签收">未签收</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-slate-500">状态</label>
+                        <select id="analysisStatus" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                            <option value="">全部</option>
+                            <option value="待配载">待配载</option>
+                            <option value="已配载">已配载</option>
+                            <option value="已发车确认">已发车确认</option>
+                            <option value="已签收">已签收</option>
+                            <option value="已回单确认">已回单确认</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="analysisQueryBtn" onclick="analysisQuery()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            <span class="btn-text">查询</span>
+                        </button>
+                        <button id="analysisAnalyzeBtn" onclick="analysisAnalyze()" class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm font-medium flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                            <span class="btn-text">分析</span>
+                        </button>
+                        <button id="analysisExportBtn" onclick="analysisExport()" class="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            <span class="btn-text">导出</span>
+                        </button>
+                        <span id="analysisStatus" class="hidden items-center gap-2 px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm">
+                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <span id="analysisStatusText">处理中...</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 统计卡片 -->
+            <div class="grid grid-cols-4 gap-4 mb-4" id="analysisSummary"></div>
+            
+            <!-- 图表区域 -->
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="bg-slate-50 rounded-xl p-4">
+                    <h3 class="text-sm font-semibold text-slate-700 mb-3">按省份货量分布</h3>
+                    <div style="height: 280px;"><canvas id="analysisProvinceChart"></canvas></div>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-4">
+                    <h3 class="text-sm font-semibold text-slate-700 mb-3">物流时效分析</h3>
+                    <div style="height: 280px;"><canvas id="analysisLogisticsChart"></canvas></div>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="bg-slate-50 rounded-xl p-4">
+                    <h3 class="text-sm font-semibold text-slate-700 mb-3">每日货量趋势（按省份堆叠）</h3>
+                    <div style="height: 280px;"><canvas id="analysisDailyChart"></canvas></div>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-4">
+                    <h3 class="text-sm font-semibold text-slate-700 mb-3">按网点统计</h3>
+                    <div style="height: 280px;"><canvas id="analysisNetworkChart"></canvas></div>
+                </div>
+            </div>
+            
+            <!-- 订单列表 -->
+            <div class="table-wrapper">
+                <div class="table-container" style="max-height: 400px;">
+                    <table class="data-table w-full">
+                        <thead class="sticky top-0">
+                            <tr>
+                                <th>来源单号</th><th>配载单号</th><th>收货方</th><th>省份</th><th>网点</th>
+                                <th>司机</th><th>车牌</th><th>创建时间</th><th>要求到货</th><th>重量(kg)</th>
+                                <th>状态</th><th>物流时效</th>
+                            </tr>
+                        </thead>
+                        <tbody id="analysisTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="text-right text-sm text-slate-500 mt-2" id="analysisCount"></div>
             </div>
         </div>
 
@@ -2959,7 +3063,7 @@
                 // 使用默认配置
                 selectedNetworks = ['零担'];
                 selectedNetworksSet = new Set(selectedNetworks);
-                allNetworks = ['江南', '非凡', '讯服', '江北', '零担'];
+                allNetworks = ['江南', '非凡', '讯服', '江北', '零担', '兴兴', '广宏'];
                 console.log('[DEBUG] 使用默认配置');
                 renderNetworkCheckboxes();
             }
@@ -2967,9 +3071,17 @@
 
         function renderNetworkCheckboxes() {
             const container = document.getElementById('networkCheckboxes');
-            console.log('[DEBUG] renderNetworkCheckboxes 被调用, allNetworks:', allNetworks, 'selected:', Array.from(selectedNetworksSet));
+            const defaultNetworks = ['零担', '非凡', '讯服', '江南', '江北', '兴兴', '广宏'];
+            const sortedNetworks = [...allNetworks].sort((a, b) => {
+                const aIdx = defaultNetworks.indexOf(a);
+                const bIdx = defaultNetworks.indexOf(b);
+                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                if (aIdx !== -1) return -1;
+                if (bIdx !== -1) return 1;
+                return a.localeCompare(b);
+            });
             
-            container.innerHTML = allNetworks.map(n => `
+            container.innerHTML = sortedNetworks.map(n => `
                 <label class="checkbox-item ${selectedNetworksSet.has(n) ? 'selected' : ''}" data-network="${n}">
                     <input type="checkbox" value="${n}" ${selectedNetworksSet.has(n) ? 'checked' : ''}>
                     <span class="checkmark">
@@ -3054,13 +3166,27 @@
             const icon = document.getElementById(type + 'CollapseIcon');
             const content = document.getElementById(type + 'ConfigContent');
             
-            icon.classList.toggle('collapsed');
-            content.classList.toggle('collapsed');
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                icon.style.transform = 'rotate(90deg)';
+            } else {
+                content.classList.add('collapsed');
+                icon.style.transform = 'rotate(0deg)';
+            }
         }
 
         function renderProvinceCheckboxes() {
             const container = document.getElementById('provinceCheckboxes');
-            container.innerHTML = allProvinces.map(p => `
+            const defaultProvinces = ['湖南', '湖北', '新疆', '河北', '安徽'];
+            const sortedProvinces = [...allProvinces].sort((a, b) => {
+                const aIdx = defaultProvinces.indexOf(a);
+                const bIdx = defaultProvinces.indexOf(b);
+                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                if (aIdx !== -1) return -1;
+                if (bIdx !== -1) return 1;
+                return a.localeCompare(b);
+            });
+            container.innerHTML = sortedProvinces.map(p => `
                 <label class="checkbox-item ${selectedProvincesSet.has(p) ? 'selected' : ''}" data-province="${p}">
                     <input type="checkbox" value="${p}" ${selectedProvincesSet.has(p) ? 'checked' : ''}>
                     <span class="checkmark">
@@ -3239,6 +3365,274 @@
             if (e.target === this) {
                 closeWeeklyOrdersModal();
             }
+        });
+
+        // ==================== 订单分析功能 ====================
+        let analysisData = [];
+        let analysisProvinceChart = null;
+        let analysisLogisticsChart = null;
+        let analysisDailyChart = null;
+        let analysisNetworkChart = null;
+
+        async function loadAnalysisNetworks() {
+            try {
+                const resp = await fetch('/api/networks');
+                const data = await resp.json();
+                if (data.success) {
+                    const select = document.getElementById('analysisNetwork');
+                    select.innerHTML = '<option value="">全部网点</option>' + 
+                        (data.all || []).map(n => `<option value="${n}">${n}</option>`).join('');
+                }
+            } catch (e) { console.error('加载网点失败', e); }
+        }
+
+        function showAnalysisStatus(text) {
+            document.getElementById('analysisStatus').classList.remove('hidden');
+            document.getElementById('analysisStatus').classList.add('flex');
+            document.getElementById('analysisStatusText').textContent = text;
+            document.getElementById('analysisQueryBtn').disabled = true;
+            document.getElementById('analysisAnalyzeBtn').disabled = true;
+            document.getElementById('analysisExportBtn').disabled = true;
+        }
+
+        function hideAnalysisStatus() {
+            document.getElementById('analysisStatus').classList.add('hidden');
+            document.getElementById('analysisStatus').classList.remove('flex');
+            document.getElementById('analysisQueryBtn').disabled = false;
+            document.getElementById('analysisAnalyzeBtn').disabled = false;
+            document.getElementById('analysisExportBtn').disabled = false;
+        }
+
+        async function analysisQuery() {
+            const logisticsFilter = document.getElementById('analysisLogistics').value;
+            
+            const params = {
+                network: document.getElementById('analysisNetwork').value,
+                created_start: document.getElementById('analysisCreatedStart').value ? document.getElementById('analysisCreatedStart').value + 'T00:00:00.000Z' : null,
+                created_end: document.getElementById('analysisCreatedEnd').value ? document.getElementById('analysisCreatedEnd').value + 'T23:59:59.999Z' : null,
+                delivery_start: document.getElementById('analysisDeliveryStart').value ? document.getElementById('analysisDeliveryStart').value + 'T00:00:00.000Z' : null,
+                delivery_end: document.getElementById('analysisDeliveryEnd').value ? document.getElementById('analysisDeliveryEnd').value + 'T23:59:59.999Z' : null,
+                status: document.getElementById('analysisStatus').value
+            };
+            
+            showAnalysisStatus('查询中...');
+            document.getElementById('analysisTableBody').innerHTML = '<tr><td colspan="12" class="text-center py-8 text-slate-400">加载中...</td></tr>';
+            
+            try {
+                const resp = await fetch('/api/order-analysis/query', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(params)
+                });
+                const result = await resp.json();
+                
+                if (result.success) {
+                    let orders = result.data || [];
+                    
+                    // 前端过滤物流时效
+                    if (logisticsFilter && logisticsFilter !== '全部') {
+                        if (logisticsFilter === '未签收') {
+                            orders = orders.filter(o => !o.logistics_time || o.logistics_time === 'null' || o.logistics_time === '');
+                        } else {
+                            orders = orders.filter(o => o.logistics_time === logisticsFilter);
+                        }
+                    }
+                    
+                    analysisData = orders;
+                    renderAnalysisSummary({success: true, data: orders, total: orders.length, total_weight: orders.reduce((s,o) => s + (o.stowage_weight||0), 0)});
+                    renderAnalysisTable(orders);
+                    showAnalysisStatus('查询完成 ✓');
+                } else {
+                    showAnalysisStatus('查询失败');
+                }
+            } catch (e) {
+                showAnalysisStatus('请求异常');
+            }
+            setTimeout(hideAnalysisStatus, 1500);
+        }
+
+        function renderAnalysisSummary(result) {
+            const total = result.total || 0;
+            const totalWeight = result.total_weight || 0;
+            const avgWeight = total > 0 ? Math.round(totalWeight / total) : 0;
+            const signed = analysisData.filter(o => o.status === '已签收' || o.status === '已回单确认').length;
+            const onTime = analysisData.filter(o => o.logistics_time === '准时').length;
+            const onTimeRate = signed > 0 ? Math.round(onTime / signed * 100) : 0;
+            
+            const cards = [
+                { label: '订单总数', value: total.toLocaleString(), sub: '单', color: 'blue' },
+                { label: '总重量', value: (totalWeight / 1000).toFixed(1), sub: '吨', color: 'emerald' },
+                { label: '平均重量', value: avgWeight.toLocaleString(), sub: 'kg/单', color: 'amber' },
+                { label: '准时率', value: onTimeRate, sub: '%', color: 'purple' }
+            ];
+            
+            document.getElementById('analysisSummary').innerHTML = cards.map(c => `
+                <div class="bg-gradient-to-br from-${c.color}-50 to-white rounded-xl p-4 border border-${c.color}-100">
+                    <div class="text-sm text-slate-500 mb-1">${c.label}</div>
+                    <div class="text-2xl font-bold text-${c.color}-600">${c.value}<span class="text-sm font-normal text-slate-400 ml-1">${c.sub}</span></div>
+                </div>
+            `).join('');
+        }
+
+        function renderAnalysisTable(orders) {
+            const tbody = document.getElementById('analysisTableBody');
+            if (!orders || orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center py-8 text-slate-400">暂无数据</td></tr>';
+                document.getElementById('analysisCount').textContent = '';
+                return;
+            }
+            
+            tbody.innerHTML = orders.map(o => `<tr>
+                <td class="font-mono text-xs">${o.source_order_no || '-'}</td>
+                <td class="font-mono text-xs">${o.stowage_no || '-'}</td>
+                <td title="${o.receive_name || ''}">${(o.receive_name || '-').substring(0, 12)}</td>
+                <td>${o.province || '-'}</td>
+                <td>${o.network || '-'}</td>
+                <td>${o.carrier_name || '-'}</td>
+                <td>${o.plate_no || '-'}</td>
+                <td>${o.created_date || '-'}</td>
+                <td>${o.delivery_date || '-'}</td>
+                <td class="text-right">${o.stowage_weight.toLocaleString()}</td>
+                <td><span class="badge ${getStatusBadgeClass(o.status)}">${o.status || '-'}</span></td>
+                <td>${o.logistics_time || '-'}</td>
+            </tr>`).join('');
+            
+            document.getElementById('analysisCount').textContent = `共 ${orders.length} 条记录 / 总重 ${orders.reduce((s,o) => s + (o.stowage_weight||0), 0).toLocaleString()} kg`;
+        }
+
+        function getStatusBadgeClass(status) {
+            if (status === '已签收' || status === '已回单确认') return 'badge-success';
+            if (status === '待配载') return 'badge-warning';
+            if (status === '已发车确认') return 'badge-info';
+            return '';
+        }
+
+        async function analysisAnalyze() {
+            if (!analysisData || analysisData.length === 0) {
+                showAnalysisStatus('请先查询数据');
+                setTimeout(hideAnalysisStatus, 1500);
+                return;
+            }
+            
+            showAnalysisStatus('分析中...');
+            
+            try {
+                const resp = await fetch('/api/order-analysis/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({orders: analysisData})
+                });
+                const result = await resp.json();
+                
+                if (result.success) {
+                    renderAnalysisCharts(result.data);
+                    showAnalysisStatus('分析完成 ✓');
+                } else {
+                    showAnalysisStatus('分析失败');
+                }
+            } catch (e) {
+                showAnalysisStatus('分析异常');
+            }
+            setTimeout(hideAnalysisStatus, 1500);
+        }
+
+        function renderAnalysisCharts(data) {
+            // 省份柱状图
+            if (analysisProvinceChart) analysisProvinceChart.destroy();
+            const provinceCtx = document.getElementById('analysisProvinceChart').getContext('2d');
+            const provinceData = data.by_province || [];
+            analysisProvinceChart = new Chart(provinceCtx, {
+                type: 'bar',
+                data: {
+                    labels: provinceData.map(p => p.province),
+                    datasets: [{
+                        label: '重量(吨)',
+                        data: provinceData.map(p => (p.weight/1000).toFixed(1)),
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                        borderColor: '#3b82f6',
+                        borderWidth: 1
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+            });
+            
+            // 物流时效饼图
+            if (analysisLogisticsChart) analysisLogisticsChart.destroy();
+            const logisticsCtx = document.getElementById('analysisLogisticsChart').getContext('2d');
+            const logisticsData = data.by_logistics || [];
+            const colors = ['#22c55e', '#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6'];
+            analysisLogisticsChart = new Chart(logisticsCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: logisticsData.map(l => l.logistics),
+                    datasets: [{ data: logisticsData.map(l => l.count), backgroundColor: colors.slice(0, logisticsData.length) }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+            
+            // 每日堆叠图
+            if (analysisDailyChart) analysisDailyChart.destroy();
+            const dailyCtx = document.getElementById('analysisDailyChart').getContext('2d');
+            const dailyData = data.daily_province || { dates: [], series: [] };
+            const dailyColors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#78716c'];
+            analysisDailyChart = new Chart(dailyCtx, {
+                type: 'bar',
+                data: {
+                    labels: dailyData.dates,
+                    datasets: dailyData.series.map((s, i) => ({
+                        label: s.name,
+                        data: s.data.map(v => (v/1000).toFixed(1)),
+                        backgroundColor: dailyColors[i % dailyColors.length]
+                    }))
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+            });
+            
+            // 网点饼图
+            if (analysisNetworkChart) analysisNetworkChart.destroy();
+            const networkCtx = document.getElementById('analysisNetworkChart').getContext('2d');
+            const networkData = data.by_network || [];
+            analysisNetworkChart = new Chart(networkCtx, {
+                type: 'pie',
+                data: {
+                    labels: networkData.map(n => n.network),
+                    datasets: [{ data: networkData.map(n => (n.weight/1000).toFixed(1)), backgroundColor: colors.slice(0, networkData.length) }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        async function analysisExport() {
+            if (!analysisData || analysisData.length === 0) {
+                showAnalysisStatus('请先查询数据');
+                setTimeout(hideAnalysisStatus, 1500);
+                return;
+            }
+            
+            showAnalysisStatus('导出中...');
+            
+            try {
+                const resp = await fetch('/api/order-analysis/export', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ rules: [] })
+                });
+                const result = await resp.json();
+                
+                if (result.success) {
+                    showAnalysisStatus('导出完成 ✓');
+                } else {
+                    showAnalysisStatus('导出失败: ' + (result.message || ''));
+                }
+            } catch (e) {
+                showAnalysisStatus('导出异常');
+            }
+            setTimeout(hideAnalysisStatus, 2000);
+        }
+
+        // 初始化时加载网点
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAnalysisNetworks();
         });
     </script>
 </body>
