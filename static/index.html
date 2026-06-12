@@ -77,6 +77,7 @@
         <button class="tab" onclick="switchTab('tomorrow')">明日未签收</button>
         <button class="tab" onclick="switchTab('sender')">发货省份订单</button>
         <button class="tab" onclick="switchTab('weekly')">近7天趋势</button>
+        <button class="tab" onclick="switchTab('analysis')">📊 订单分析</button>
     </div>
 
     <div class="panel active" id="panel-pending">
@@ -120,6 +121,69 @@
 
     <div class="panel" id="panel-weekly">
         <div class="chart-box"><h3>近7天订单重量趋势 (kg)</h3><canvas id="weeklyChart"></canvas></div>
+    </div>
+
+    <!-- 订单分析面板 -->
+    <div class="panel" id="panel-analysis">
+        <div class="filter-bar" style="background:#f5f7fa; padding:14px; border-radius:8px; margin-bottom:16px;">
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <label style="font-size:13px;">网点:</label>
+                <select id="analysisNetwork" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px;">
+                    <option value="">全部网点</option>
+                </select>
+                <label style="font-size:13px;">创建时间:</label>
+                <input type="date" id="analysisCreatedStart" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px;">
+                <span style="color:#999;">至</span>
+                <input type="date" id="analysisCreatedEnd" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px;">
+                <label style="font-size:13px;">到货时间:</label>
+                <input type="date" id="analysisDeliveryStart" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px;">
+                <span style="color:#999;">至</span>
+                <input type="date" id="analysisDeliveryEnd" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px;">
+                <label style="font-size:13px;">物流时效:</label>
+                <select id="analysisLogistics" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px;">
+                    <option value="">全部</option>
+                    <option value="准时">准时</option>
+                    <option value="延误">延误</option>
+                </select>
+                <label style="font-size:13px;">状态:</label>
+                <select id="analysisStatus" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px;">
+                    <option value="">全部</option>
+                    <option value="待配载">待配载</option>
+                    <option value="已配载">已配载</option>
+                    <option value="已发车确认">已发车确认</option>
+                    <option value="已签收">已签收</option>
+                    <option value="已回单确认">已回单确认</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <button class="btn-refresh" onclick="analysisQuery()" style="background:#1a73e8;">🔍 查询</button>
+                <button class="btn-refresh" onclick="analysisExport()" style="background:#34a853;">📥 导出</button>
+                <button class="btn-refresh" onclick="analysisAnalyze()" style="background:#fbbc04; color:#333;">📊 分析</button>
+            </div>
+        </div>
+        
+        <div class="summary-cards" id="analysisSummary"></div>
+        
+        <div class="chart-row" style="grid-template-columns: 1fr 1fr; margin-bottom:16px;">
+            <div class="chart-box"><h3>按省份货量分布</h3><canvas id="analysisProvinceChart"></canvas></div>
+            <div class="chart-box"><h3>物流时效分析</h3><canvas id="analysisLogisticsChart"></canvas></div>
+        </div>
+        <div class="chart-row" style="grid-template-columns: 1fr 1fr; margin-bottom:16px;">
+            <div class="chart-box"><h3>每日货量趋势（按省份堆叠）</h3><canvas id="analysisDailyChart"></canvas></div>
+            <div class="chart-box"><h3>按网点统计</h3><canvas id="analysisNetworkChart"></canvas></div>
+        </div>
+        
+        <div class="table-wrap" style="max-height:400px;">
+            <table id="analysisTable">
+                <thead><tr>
+                    <th>来源单号</th><th>配载单号</th><th>收货方</th><th>省份</th><th>网点</th>
+                    <th>司机</th><th>车牌</th><th>创建时间</th><th>要求到货</th><th>重量(kg)</th>
+                    <th>状态</th><th>物流时效</th>
+                </tr></thead>
+                <tbody id="analysisTableBody"></tbody>
+            </table>
+        </div>
+        <div style="text-align:right; margin-top:8px; color:#999; font-size:13px;" id="analysisCount"></div>
     </div>
 </div>
 
@@ -414,6 +478,238 @@ function renderWeeklyChart() {
         }
     });
 }
+
+// ====================== 订单分析 ======================
+let analysisData = [];
+let analysisProvinceChart = null;
+let analysisLogisticsChart = null;
+let analysisDailyChart = null;
+let analysisNetworkChart = null;
+
+async function loadAnalysisNetworks() {
+    try {
+        const resp = await fetch('/api/networks');
+        const data = await resp.json();
+        if (data.success) {
+            const select = document.getElementById('analysisNetwork');
+            select.innerHTML = '<option value="">全部网点</option>' + 
+                (data.all || []).map(n => `<option value="${n}">${n}</option>`).join('');
+        }
+    } catch (e) { console.error('加载网点失败', e); }
+}
+
+async function analysisQuery() {
+    const params = {
+        network: document.getElementById('analysisNetwork').value,
+        created_start: document.getElementById('analysisCreatedStart').value ? document.getElementById('analysisCreatedStart').value + 'T00:00:00.000Z' : null,
+        created_end: document.getElementById('analysisCreatedEnd').value ? document.getElementById('analysisCreatedEnd').value + 'T23:59:59.999Z' : null,
+        delivery_start: document.getElementById('analysisDeliveryStart').value ? document.getElementById('analysisDeliveryStart').value + 'T00:00:00.000Z' : null,
+        delivery_end: document.getElementById('analysisDeliveryEnd').value ? document.getElementById('analysisDeliveryEnd').value + 'T23:59:59.999Z' : null,
+        logistics_time: document.getElementById('analysisLogistics').value,
+        status: document.getElementById('analysisStatus').value
+    };
+    
+    document.getElementById('analysisTableBody').innerHTML = '<tr><td colspan="12" style="text-align:center; padding:20px; color:#999;">查询中...</td></tr>';
+    
+    try {
+        const resp = await fetch('/api/order-analysis/query', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(params)
+        });
+        const result = await resp.json();
+        
+        if (result.success) {
+            analysisData = result.data || [];
+            renderAnalysisSummary(result);
+            renderAnalysisTable(analysisData);
+        } else {
+            alert('查询失败: ' + result.message);
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+}
+
+function renderAnalysisSummary(result) {
+    const total = result.total || 0;
+    const totalWeight = result.total_weight || 0;
+    const avgWeight = total > 0 ? Math.round(totalWeight / total) : 0;
+    const signed = analysisData.filter(o => o.status === '已签收' || o.status === '已回单确认').length;
+    const onTime = analysisData.filter(o => o.logistics_time === '准时').length;
+    const onTimeRate = signed > 0 ? Math.round(onTime / signed * 100) : 0;
+    
+    const cards = [
+        { label: '订单总数', value: total, sub: '单' },
+        { label: '总重量', value: (totalWeight / 1000).toFixed(1), sub: '吨' },
+        { label: '平均重量', value: avgWeight, sub: 'kg/单' },
+        { label: '准时率', value: onTimeRate, sub: '%' }
+    ];
+    
+    document.getElementById('analysisSummary').innerHTML = cards.map(c =>
+        `<div class="card"><div class="label">${c.label}</div><div class="value">${c.value.toLocaleString()}<span style="font-size:14px; color:#999; margin-left:4px;">${c.sub}</span></div></div>`
+    ).join('');
+}
+
+function renderAnalysisTable(orders) {
+    const tbody = document.getElementById('analysisTableBody');
+    if (!orders || orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" class="empty">暂无数据</td></tr>';
+        document.getElementById('analysisCount').textContent = '';
+        return;
+    }
+    
+    tbody.innerHTML = orders.map(o => `<tr>
+        <td>${o.source_order_no || '-'}</td>
+        <td>${o.stowage_no || '-'}</td>
+        <td title="${o.receive_name || ''}">${(o.receive_name || '-').substring(0, 12)}</td>
+        <td>${o.province || '-'}</td>
+        <td>${o.network || '-'}</td>
+        <td>${o.carrier_name || '-'}</td>
+        <td>${o.plate_no || '-'}</td>
+        <td>${o.created_date || '-'}</td>
+        <td>${o.delivery_date || '-'}</td>
+        <td>${o.stowage_weight.toLocaleString()}</td>
+        <td><span class="status-badge ${getStatusClass(o.status)}">${o.status || '-'}</span></td>
+        <td>${o.logistics_time || '-'}</td>
+    </tr>`).join('');
+    
+    document.getElementById('analysisCount').textContent = `共 ${orders.length} 条记录 / 总重 ${orders.reduce((s,o) => s + (o.stowage_weight||0), 0).toLocaleString()} kg`;
+}
+
+function getStatusClass(status) {
+    if (status === '已签收' || status === '已回单确认') return 'status-signed';
+    if (status === '待配载') return 'status-pending';
+    if (status === '已发车确认') return 'status-transit';
+    return '';
+}
+
+async function analysisAnalyze() {
+    if (!analysisData || analysisData.length === 0) {
+        alert('请先查询订单数据');
+        return;
+    }
+    
+    try {
+        const resp = await fetch('/api/order-analysis/analyze', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({orders: analysisData})
+        });
+        const result = await resp.json();
+        
+        if (result.success) {
+            renderAnalysisCharts(result.data);
+        }
+    } catch (e) {
+        alert('分析失败: ' + e.message);
+    }
+}
+
+function renderAnalysisCharts(data) {
+    // 省份柱状图
+    if (analysisProvinceChart) analysisProvinceChart.destroy();
+    const provinceCtx = document.getElementById('analysisProvinceChart').getContext('2d');
+    const provinceData = data.by_province || [];
+    analysisProvinceChart = new Chart(provinceCtx, {
+        type: 'bar',
+        data: {
+            labels: provinceData.map(p => p.province),
+            datasets: [{
+                label: '重量(吨)',
+                data: provinceData.map(p => (p.weight/1000).toFixed(1)),
+                backgroundColor: 'rgba(26,115,232,0.7)',
+                borderColor: '#1a73e8',
+                borderWidth: 1
+            }]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+    });
+    
+    // 物流时效饼图
+    if (analysisLogisticsChart) analysisLogisticsChart.destroy();
+    const logisticsCtx = document.getElementById('analysisLogisticsChart').getContext('2d');
+    const logisticsData = data.by_logistics || [];
+    const colors = ['#34a853', '#ea4335', '#fbbc04', '#1a73e8', '#9c27b0'];
+    analysisLogisticsChart = new Chart(logisticsCtx, {
+        type: 'doughnut',
+        data: {
+            labels: logisticsData.map(l => l.logistics),
+            datasets: [{ data: logisticsData.map(l => l.count), backgroundColor: colors.slice(0, logisticsData.length) }]
+        },
+        options: { responsive: true }
+    });
+    
+    // 每日堆叠图
+    if (analysisDailyChart) analysisDailyChart.destroy();
+    const dailyCtx = document.getElementById('analysisDailyChart').getContext('2d');
+    const dailyData = data.daily_province || { dates: [], series: [] };
+    const dailyColors = ['#1a73e8', '#34a853', '#fbbc04', '#ea4335', '#9c27b0', '#00bcd4', '#ff9800', '#795548'];
+    analysisDailyChart = new Chart(dailyCtx, {
+        type: 'bar',
+        data: {
+            labels: dailyData.dates,
+            datasets: dailyData.series.map((s, i) => ({
+                label: s.name,
+                data: s.data.map(v => (v/1000).toFixed(1)),
+                backgroundColor: dailyColors[i % dailyColors.length]
+            }))
+        },
+        options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+    });
+    
+    // 网点饼图
+    if (analysisNetworkChart) analysisNetworkChart.destroy();
+    const networkCtx = document.getElementById('analysisNetworkChart').getContext('2d');
+    const networkData = data.by_network || [];
+    analysisNetworkChart = new Chart(networkCtx, {
+        type: 'pie',
+        data: {
+            labels: networkData.map(n => n.network),
+            datasets: [{ data: networkData.map(n => (n.weight/1000).toFixed(1)), backgroundColor: colors.slice(0, networkData.length) }]
+        },
+        options: { responsive: true }
+    });
+}
+
+async function analysisExport() {
+    if (!analysisData || analysisData.length === 0) {
+        alert('请先查询订单数据');
+        return;
+    }
+    
+    const rules = [];
+    const network = document.getElementById('analysisNetwork').value;
+    if (network) {
+        const resp = await fetch('/api/networks');
+        const data = await resp.json();
+        // 这里需要根据网点名称获取ID
+    }
+    
+    alert('正在提交导出任务，请稍候...');
+    
+    try {
+        const resp = await fetch('/api/order-analysis/export', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ rules })
+        });
+        const result = await resp.json();
+        
+        if (result.success) {
+            alert('导出成功！文件已保存到: ' + result.filename);
+        } else {
+            alert('导出失败: ' + result.message);
+        }
+    } catch (e) {
+        alert('导出失败: ' + e.message);
+    }
+}
+
+// 初始化时加载网点
+document.addEventListener('DOMContentLoaded', function() {
+    loadAnalysisNetworks();
+});
 
 function switchTab(tab) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));

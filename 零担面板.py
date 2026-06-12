@@ -1738,6 +1738,341 @@ def load_network_config():
         pass
 
 
+# ====================== 订单分析API ======================
+
+# 导出字段配置
+EXPORT_SORT_FIELDS = [
+    "source_order_no", "exe_pur_order_b.order_date", "delivery_date", "receive_time",
+    "stowage_all_weight", "signed_weight", "status_dk", "receive_name", "detailed_address",
+    "receiver_name", "receiver_phone", "salesman_name", "receive_region_code", "material_name",
+    "packaging_num", "plate_no", "carrier_name", "carrier_phone", "no", "order_no",
+    "type_code", "sub_type_code", "expected_arrival_date", "k_contract_line_a.network",
+    "exe_pur_order_b.pur_org_code", "created_date", "start_time",
+    "exe_pur_order_b.customer", "exe_pur_order_b.total_weight",
+    "shipping_weight", "send_address", "send_name",
+    "receipt_time", "exe_pur_order_b.customer_no",
+    "logistics_time", "customer_prescription"
+]
+
+
+def query_stowage_orders(token, rules, size=9999):
+    """查询配载单数据"""
+    try:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json;charset=UTF-8"
+        }
+        payload = {
+            "debugFlag": False,
+            "developmentSystemId": None,
+            "direction": "DESC",
+            "dynamicFormCode": "stowage_sign_receipt",
+            "fromClientType": "pc",
+            "number": 0,
+            "property": "id",
+            "rules": rules,
+            "size": size,
+            "sorts": [{"property": "delivery_date", "direction": "ASC"}],
+            "specialConditions": []
+        }
+        resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=60)
+        return resp.json().get("content", [])
+    except Exception as e:
+        print(f"[ERROR] query_stowage_orders: {e}")
+        return []
+
+
+def parse_stowage_order(order):
+    """解析配载单数据"""
+    receive_region = order.get("receive_region_code_show", "")
+    province = "未知"
+    if receive_region and "中国-" in receive_region:
+        parts = receive_region.split("-")
+        if len(parts) >= 2:
+            province = parts[1]
+    elif receive_region:
+        for p in ["河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西",
+                  "山东", "河南", "湖北", "湖南", "广东", "海南", "四川", "贵州", "云南", "陕西",
+                  "甘肃", "青海", "内蒙古", "广西", "西藏", "宁夏", "新疆", "北京", "上海", "天津", "重庆"]:
+            if p in receive_region:
+                province = p
+                break
+    
+    return {
+        "id": order.get("id"),
+        "source_order_no": order.get("source_order_no"),
+        "stowage_no": order.get("no"),
+        "order_no": order.get("order_no"),
+        "status": order.get("status_dk_show"),
+        "status_code": order.get("status_dk"),
+        "created_date": format_time(order.get("created_date")),
+        "delivery_date": format_time(order.get("delivery_date")),
+        "receive_time": format_time(order.get("receive_time")),
+        "receive_name": order.get("receive_name"),
+        "receiver_name": order.get("receiver_name"),
+        "receiver_phone": order.get("receiver_phone"),
+        "receive_region": receive_region,
+        "province": province,
+        "detailed_address": order.get("detailed_address"),
+        "send_name": order.get("send_name"),
+        "send_region": order.get("send_region_code_show"),
+        "network": order.get("k_contract_line_a", {}).get("network_show"),
+        "network_id": order.get("k_contract_line_a", {}).get("network"),
+        "carrier_name": order.get("carrier_name"),
+        "plate_no": order.get("plate_no"),
+        "carrier_phone": order.get("carrier_phone"),
+        "salesman_name": order.get("salesman_name"),
+        "stowage_weight": float(order.get("stowage_all_weight", 0) or 0),
+        "signed_weight": float(order.get("signed_weight", 0) or 0),
+        "logistics_time": order.get("logistics_time_show"),
+        "customer_prescription": order.get("customer_prescription_show"),
+        "material_name": order.get("material_name"),
+        "type_code": order.get("type_code_show"),
+        "sub_type_code": order.get("sub_type_code_show"),
+        "customer": order.get("exe_pur_order_b", {}).get("customer"),
+        "customer_group": order.get("exe_pur_order_b", {}).get("customer_group"),
+    }
+
+
+@app.route('/api/order-analysis/query', methods=['POST'])
+def api_order_analysis_query():
+    """订单分析-查询"""
+    try:
+        data = request.get_json(silent=True) or {}
+        token = login()
+        if not token:
+            return jsonify({"success": False, "message": "登录失败"})
+        
+        rules = []
+        
+        # 网点筛选
+        network = data.get('network')
+        if network and network in ALL_NETWORKS:
+            rules.append({"field": "k_contract_line_a.network", "option": "EQ", "values": [ALL_NETWORKS[network]]})
+        
+        # 创建时间范围
+        created_start = data.get('created_start')
+        created_end = data.get('created_end')
+        if created_start and created_end:
+            rules.append({"field": "created_date", "option": "BTS", "values": [created_start, created_end]})
+        
+        # 要求到货时间范围
+        delivery_start = data.get('delivery_start')
+        delivery_end = data.get('delivery_end')
+        if delivery_start and delivery_end:
+            rules.append({"field": "delivery_date", "option": "BTS", "values": [delivery_start, delivery_end]})
+        
+        # 物流时效
+        logistics = data.get('logistics_time')
+        if logistics and logistics != '全部':
+            rules.append({"field": "logistics_time", "option": "EQ", "values": [logistics]})
+        
+        # 配载单状态
+        status = data.get('status')
+        if status and status != '全部':
+            status_map = {
+                "待配载": "TO_BE_STOWED", "已配载": "STOWED",
+                "已发车确认": "DEPARTED_CONFIRMED", "已签收": "SIGNED_IN",
+                "已回单确认": "RECEIPT_CONFIRMED"
+            }
+            if status in status_map:
+                rules.append({"field": "status_dk", "option": "EQ", "values": [status_map[status]]})
+        
+        orders_raw = query_stowage_orders(token, rules)
+        orders = [parse_stowage_order(o) for o in orders_raw]
+        
+        return jsonify({
+            "success": True,
+            "data": orders,
+            "total": len(orders),
+            "total_weight": round(sum(o["stowage_weight"] for o in orders), 2)
+        })
+    except Exception as e:
+        print(f"[ERROR] api_order_analysis_query: {e}")
+        return jsonify({"success": False, "message": str(e)})
+
+
+@app.route('/api/order-analysis/analyze', methods=['POST'])
+def api_order_analysis_analyze():
+    """订单分析-统计分析"""
+    try:
+        data = request.get_json(silent=True) or {}
+        orders = data.get('orders', [])
+        
+        # 按省份统计
+        province_stats = {}
+        for o in orders:
+            p = o.get("province", "未知")
+            if p not in province_stats:
+                province_stats[p] = {"count": 0, "weight": 0}
+            province_stats[p]["count"] += 1
+            province_stats[p]["weight"] += o.get("stowage_weight", 0)
+        by_province = [{"province": k, "count": v["count"], "weight": round(v["weight"], 2)}
+                       for k, v in sorted(province_stats.items(), key=lambda x: x[1]["weight"], reverse=True)]
+        
+        # 按日期统计
+        date_stats = {}
+        for o in orders:
+            d = (o.get("delivery_date") or "")[:10]
+            if not d:
+                d = "未知"
+            if d not in date_stats:
+                date_stats[d] = {"count": 0, "weight": 0}
+            date_stats[d]["count"] += 1
+            date_stats[d]["weight"] += o.get("stowage_weight", 0)
+        by_date = [{"date": k, "count": v["count"], "weight": round(v["weight"], 2)}
+                   for k, v in sorted(date_stats.items())]
+        
+        # 按网点统计
+        network_stats = {}
+        for o in orders:
+            n = o.get("network", "未知")
+            if n not in network_stats:
+                network_stats[n] = {"count": 0, "weight": 0}
+            network_stats[n]["count"] += 1
+            network_stats[n]["weight"] += o.get("stowage_weight", 0)
+        by_network = [{"network": k, "count": v["count"], "weight": round(v["weight"], 2)}
+                      for k, v in sorted(network_stats.items(), key=lambda x: x[1]["weight"], reverse=True)]
+        
+        # 按状态统计
+        status_stats = {}
+        for o in orders:
+            s = o.get("status", "未知")
+            if s not in status_stats:
+                status_stats[s] = {"count": 0, "weight": 0}
+            status_stats[s]["count"] += 1
+            status_stats[s]["weight"] += o.get("stowage_weight", 0)
+        by_status = [{"status": k, "count": v["count"], "weight": round(v["weight"], 2)}
+                     for k, v in sorted(status_stats.items(), key=lambda x: x[1]["count"], reverse=True)]
+        
+        # 按物流时效统计
+        logistics_stats = {}
+        for o in orders:
+            l = o.get("logistics_time") or "未签收"
+            if l not in logistics_stats:
+                logistics_stats[l] = {"count": 0, "weight": 0}
+            logistics_stats[l]["count"] += 1
+            logistics_stats[l]["weight"] += o.get("stowage_weight", 0)
+        by_logistics = [{"logistics": k, "count": v["count"], "weight": round(v["weight"], 2)}
+                        for k, v in sorted(logistics_stats.items(), key=lambda x: x[1]["count"], reverse=True)]
+        
+        # 每日+省份堆叠数据
+        daily_province = {}
+        for o in orders:
+            d = (o.get("delivery_date") or "")[:10]
+            p = o.get("province", "未知")
+            if d not in daily_province:
+                daily_province[d] = {}
+            if p not in daily_province[d]:
+                daily_province[d][p] = 0
+            daily_province[d][p] += o.get("stowage_weight", 0)
+        
+        all_provinces = set()
+        for dd in daily_province.values():
+            all_provinces.update(dd.keys())
+        dates = sorted(daily_province.keys())
+        series = []
+        for p in sorted(all_provinces):
+            data_arr = [round(daily_province.get(d, {}).get(p, 0), 2) for d in dates]
+            series.append({"name": p, "data": data_arr})
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "by_province": by_province,
+                "by_date": by_date,
+                "by_network": by_network,
+                "by_status": by_status,
+                "by_logistics": by_logistics,
+                "daily_province": {"dates": dates, "series": series}
+            }
+        })
+    except Exception as e:
+        print(f"[ERROR] api_order_analysis_analyze: {e}")
+        return jsonify({"success": False, "message": str(e)})
+
+
+@app.route('/api/order-analysis/export', methods=['POST'])
+def api_order_analysis_export():
+    """订单分析-导出"""
+    try:
+        data = request.get_json(silent=True) or {}
+        token = login()
+        if not token:
+            return jsonify({"success": False, "message": "登录失败"})
+        
+        rules = data.get('rules', [])
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0",
+            "language": "zh_CN",
+            "timezone": "UTC+0800"
+        }
+        
+        payload = {
+            "direction": "DESC",
+            "property": "id",
+            "fromClientType": "pc",
+            "number": 0,
+            "sorts": [],
+            "rules": rules,
+            "size": 9999,
+            "specialConditions": [],
+            "dynamicFormCode": "stowage_sign_receipt",
+            "developmentSystemId": None,
+            "debugFlag": False,
+            "exportSortFields": EXPORT_SORT_FIELDS
+        }
+        
+        export_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/module-data/receive_management/async-export"
+        resp = _sess().post(export_url, json=payload, headers=headers, timeout=30)
+        result = resp.json()
+        
+        if result.get("status") != "success":
+            return jsonify({"success": False, "message": result.get("message", "导出失败")})
+        
+        task_id = result.get("data", {}).get("id")
+        
+        # 轮询等待完成
+        queued_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/queued-task/my/{task_id}"
+        for _ in range(40):
+            time.sleep(3)
+            poll_resp = _sess().get(queued_url, headers=headers, timeout=15)
+            if poll_resp.status_code == 200:
+                task_data = poll_resp.json()
+                if task_data.get("statusEk") == "SUCCEED":
+                    output_param = task_data.get("outputParam", {})
+                    content_str = output_param.get("content", "")
+                    if content_str:
+                        content = json.loads(content_str)
+                        attach_files = content.get("attachment", {}).get("attachFile", [])
+                        if attach_files:
+                            file_key = attach_files[0].get("key")
+                            file_name = attach_files[0].get("name", "export.xlsx")
+                            
+                            # 获取授权码
+                            auth_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/file/get-temporary-auth-code?key={file_key}"
+                            auth_resp = _sess().get(auth_url, headers=headers, timeout=15)
+                            auth_code = auth_resp.json().get("temporaryAuthCode")
+                            
+                            if auth_code:
+                                # 下载文件
+                                download_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/file/download/{file_key}?authCode={auth_code}"
+                                dl_resp = _sess().get(download_url, headers=headers, timeout=60)
+                                if dl_resp.status_code == 200:
+                                    save_dir = os.path.dirname(os.path.abspath(__file__))
+                                    save_path = os.path.join(save_dir, file_name)
+                                    with open(save_path, "wb") as f:
+                                        f.write(dl_resp.content)
+                                    return jsonify({"success": True, "filename": file_name, "path": save_path})
+        
+        return jsonify({"success": False, "message": "导出超时"})
+    except Exception as e:
+        print(f"[ERROR] api_order_analysis_export: {e}")
+        return jsonify({"success": False, "message": str(e)})
+
+
 # ====================== 启动 ======================
 if __name__ == '__main__':
     # 加载省份配置

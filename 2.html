@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>王友小助手 - 物流订单监控</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['Fira Code', 'monospace'],
+                        sans: ['Fira Sans', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' },
+                        cta: { 50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 300: '#fdba74', 400: '#fb923c', 500: '#f97316', 600: '#ea580c', 700: '#c2410c' },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-light: #eff6ff;
+            --primary-dark: #1e40af;
+            --cta: #f97316;
+            --surface: #f8fafc;
+            --surface-raised: #ffffff;
+            --surface-sunken: #f1f5f9;
+            --border: #e2e8f0;
+            --ink: #0f172a;
+            --ink-secondary: #334155;
+            --ink-muted: #64748b;
+            --ink-ghost: #94a3b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+        * { font-family: 'Fira Sans', 'PingFang SC', sans-serif; }
+        body { background: var(--surface); min-height: 100vh; }
+        h1, h2, h3, h4, h5, h6 { font-weight: 600; color: var(--ink); }
+
+        @keyframes blurText {
+            0% { filter: blur(8px); opacity: 0; transform: translateY(4px); }
+            100% { filter: blur(0); opacity: 1; transform: translateY(0); }
+        }
+        .blur-text { animation: blurText 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; filter: blur(8px); opacity: 0; }
+        .blur-text-delay-1 { animation-delay: 0.1s; }
+        .blur-text-delay-2 { animation-delay: 0.2s; }
+        .blur-text-delay-3 { animation-delay: 0.3s; }
+        .blur-text-delay-4 { animation-delay: 0.4s; }
+
+        @keyframes staggerReveal {
+            0% { opacity: 0; transform: translateY(8px) scale(0.98); filter: blur(4px); }
+            100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+        }
+        .stagger-reveal { animation: staggerReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+
+        .card-lift { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .card-lift:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+
+        @keyframes countUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .count-animate { animation: countUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .pulse-dot { animation: pulseDot 2s ease-in-out infinite; }
+
+        .card { background: var(--surface-raised); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid var(--border); overflow: hidden; }
+        .stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+        .stat-value { font-size: 32px; font-weight: 700; color: var(--ink); font-family: 'Fira Code', monospace; }
+        .stat-label { font-size: 12px; font-weight: 500; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+        .section-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+        .mono { font-family: 'Fira Code', monospace; }
+
+        .config-panel { background: var(--surface-raised); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+        .config-header { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: background 0.15s; }
+        .config-header:hover { background: var(--surface-sunken); }
+        .collapse-icon { transition: transform 0.2s ease; color: var(--ink-muted); width: 16px; height: 16px; }
+        .collapse-icon.collapsed { transform: rotate(-90deg); }
+        .config-content {
+            display: grid;
+            grid-template-rows: 1fr;
+            transition: grid-template-rows 0.25s ease, opacity 0.2s ease;
+            opacity: 1;
+            will-change: grid-template-rows, opacity;
+        }
+        .config-content.collapsed {
+            grid-template-rows: 0fr;
+            opacity: 0;
+        }
+        .config-content > div {
+            overflow: hidden;
+            padding: 0 18px 16px;
+        }
+
+        .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
+        .checkbox-item { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--surface-sunken); border-radius: 8px; cursor: pointer; transition: all 0.15s; color: var(--ink-secondary); font-size: 13px; font-weight: 500; border: 1px solid var(--border); }
+        .checkbox-item:hover { border-color: var(--primary); background: var(--surface-raised); }
+        .checkbox-item.selected { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
+        .checkbox-item input { display: none; }
+        .checkbox-item .checkmark { width: 16px; height: 16px; border: 2px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
+        .checkbox-item.selected .checkmark { background: var(--primary); border-color: var(--primary); }
+        .checkbox-item .checkmark svg { width: 10px; height: 10px; stroke: white; stroke-width: 3; opacity: 0; transition: opacity 0.15s; }
+        .checkbox-item.selected .checkmark svg { opacity: 1; }
+
+        .filter-btn { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid var(--border); background: var(--surface-raised); cursor: pointer; transition: all 0.15s; color: var(--ink-secondary); }
+        .filter-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+        .module-refresh-btn { padding: 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-raised); cursor: pointer; transition: all 0.15s; color: var(--ink-muted); display: inline-flex; align-items: center; justify-content: center; }
+        .module-refresh-btn:hover { background: var(--surface-sunken); color: var(--primary); }
+        .module-refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .module-refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .loading-spinner { border: 3px solid var(--border); border-top: 3px solid var(--primary); border-radius: 50%; width: 32px; height: 32px; animation: spin 0.8s linear infinite; }
+        .loading-spinner-small { border: 2px solid var(--border); border-top: 2px solid var(--primary); border-radius: 50%; width: 14px; height: 14px; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+
+        .table-container { max-height: 400px; overflow-y: auto; }
+        .table-container::-webkit-scrollbar { width: 6px; }
+        .table-container::-webkit-scrollbar-track { background: transparent; }
+        .table-container::-webkit-scrollbar-thumb { background: var(--ink-ghost); border-radius: 3px; }
+
+        .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .data-table th { background: var(--surface-sunken); font-weight: 600; color: var(--ink-muted); padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .data-table td { padding: 12px 14px; border-bottom: 1px solid var(--surface-sunken); color: var(--ink-secondary); transition: background 0.12s; }
+        .data-table tr:hover td { background: var(--surface-sunken); }
+
+        .badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+        .badge-danger { background: #fef2f2; color: var(--danger); }
+        .badge-warning { background: #fffbeb; color: var(--warning); }
+        .badge-success { background: #ecfdf5; color: var(--success); }
+        .badge-info { background: var(--primary-light); color: var(--primary); }
+
+        .selection-panel { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-top: 14px; display: none; }
+        .selection-panel.show { display: block; animation: slideDown 0.25s ease; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+        .order-item { padding: 12px 14px; background: var(--surface-sunken); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid; transition: background 0.15s, transform 0.15s; }
+        .order-item:hover { background: var(--border); transform: translateX(2px); }
+        .order-item.red { border-left-color: var(--danger); background: #fef2f2; }
+        .order-item.amber { border-left-color: var(--warning); background: #fffbeb; }
+
+        .cargo-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--surface-sunken); border-radius: 6px; color: var(--ink-secondary); font-size: 12px; font-weight: 500; border: 1px solid var(--border); }
+        .cargo-tag .cargo-count { background: var(--primary); color: white; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; font-family: 'Fira Code', monospace; }
+
+        .order-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); border-radius: 4px; }
+
+        button:active:not(:disabled) { transform: scale(0.98); }
+        input:focus, select:focus { outline: none; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); border-color: var(--primary); }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- 头部 -->
+    <header class="bg-white border-b border-slate-200">
+        <div class="max-w-[1400px] mx-auto px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-primary-600 flex items-center justify-center blur-text">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-base font-semibold text-slate-900 blur-text blur-text-delay-1">王友小助手</h1>
+                        <p class="text-[11px] text-slate-500 blur-text blur-text-delay-2">物流订单实时监控系统</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 blur-text blur-text-delay-3">
+                        <p class="text-[10px] text-slate-400 uppercase tracking-wider font-medium">最后更新</p>
+                        <p class="text-xs font-semibold text-slate-700 mono" id="lastUpdate">--:--:--</p>
+                    </div>
+                    <div class="relative blur-text blur-text-delay-3">
+                        <input type="text" id="searchOrderInput" placeholder="输入订单号..."
+                            class="w-36 pl-3 pr-8 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all placeholder:text-slate-400"
+                            onkeydown="if(event.key==='Enter') handleSearchOrder()">
+                        <button onclick="handleSearchOrder()" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-primary-600 transition-colors cursor-pointer">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </button>
+                    </div>
+                    <button onclick="handleRefresh()" id="refreshBtn" class="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors cursor-pointer blur-text blur-text-delay-4">
+                        <svg class="w-4 h-4" id="refreshIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        刷新数据
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 省份配置面板 -->
+    <div class="max-w-[1400px] mx-auto px-6 pt-4">
+        <div class="config-panel stagger-reveal" style="animation-delay: 0.2s">
+            <div class="config-header" onclick="toggleConfig('province')">
+                <div class="flex items-center gap-2">
+                    <svg class="collapse-icon" id="provinceCollapseIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
+                    <span class="text-sm font-semibold text-slate-700">省份配置</span>
+                    <span class="text-slate-400 text-xs">勾选要查询的省份</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-slate-400 text-xs">已选 <span id="selectedCount" class="font-bold text-primary-600">0</span> 个省份</span>
+                    <button onclick="event.stopPropagation(); saveProvinces()" id="saveProvinceBtn" class="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors flex items-center gap-1 cursor-pointer">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                        保存
+                    </button>
+                </div>
+            </div>
+            <div class="config-content" id="provinceConfigContent"><div class="checkbox-group" id="provinceCheckboxes"></div></div>
+        </div>
+    </div>
+
+    <!-- 网点配置面板 -->
+    <div class="max-w-[1400px] mx-auto px-6 pb-3">
+        <div class="config-panel stagger-reveal" style="animation-delay: 0.3s">
+            <div class="config-header" onclick="toggleConfig('network')">
+                <div class="flex items-center gap-2">
+                    <svg class="collapse-icon" id="networkCollapseIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
+                    <span class="text-sm font-semibold text-slate-700">网点配置</span>
+                    <span class="text-slate-400 text-xs">勾选要查询的网点</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-slate-400 text-xs">已选 <span id="selectedNetworkCount" class="font-bold text-primary-600">0</span> 个网点</span>
+                    <button onclick="event.stopPropagation(); saveNetworks()" id="saveNetworkBtn" class="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors flex items-center gap-1 cursor-pointer">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                        保存
+                    </button>
+                </div>
+            </div>
+            <div class="config-content" id="networkConfigContent"><div class="checkbox-group" id="networkCheckboxes"></div></div>
+        </div>
+    </div>
+
+    <!-- 重点订单跟进 -->
+    <div class="max-w-[1400px] mx-auto px-6 pb-4">
+        <div class="card card-lift stagger-reveal" style="animation-delay: 0.4s">
+            <div class="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors" onclick="toggleTrackedOrdersPanel()">
+                <div class="flex items-center gap-4">
+                    <div class="w-11 h-11 rounded-xl bg-red-50 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"></path></svg>
+                    </div>
+                    <div>
+                        <p class="stat-label">重点订单跟进</p>
+                        <p class="text-2xl font-bold text-red-500 mono count-animate" id="trackedOrderCount">0</p>
+                    </div>
+                </div>
+                <svg id="trackedPanelChevron" class="w-5 h-5 text-slate-400 transition-transform duration-250" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+            <div id="trackedOrdersPanelBody" class="overflow-hidden transition-all duration-300 ease-out" style="max-height: 0; opacity: 0;">
+                <div class="border-t border-slate-100 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <p class="text-xs text-slate-500">共 <span id="trackedOrderTableCount" class="font-semibold text-slate-700">0</span> 个重点订单</p>
+                        <button onclick="refreshTrackedOrders()" class="px-3 py-1.5 text-xs bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition flex items-center gap-1.5">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            刷新状态
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="data-table w-full">
+                            <thead><tr>
+                                <th class="text-left text-xs">单号</th>
+                                <th class="text-left text-xs">客户</th>
+                                <th class="text-left text-xs">状态</th>
+                                <th class="text-left text-xs">要求到货时间</th>
+                                <th class="text-left text-xs">收货地址</th>
+                                <th class="text-right text-xs">重量(吨)</th>
+                                <th class="text-left text-xs" style="min-width:160px">备注</th>
+                                <th class="text-center text-xs" style="width:50px">操作</th>
+                            </tr></thead>
+                            <tbody id="trackedOrdersTableBody">
+                                <tr><td colspan="8"><div class="text-center py-8 text-slate-400 text-xs">暂无重点订单</div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <main class="max-w-[1400px] mx-auto px-6 py-5">
+        <!-- 概览统计 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+            <div class="card p-5 card-lift stagger-reveal" style="animation-delay: 0.3s">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <p class="stat-label">待配载订单</p>
+                        <p class="text-3xl font-bold text-slate-900 mt-1 mono count-animate" id="totalCount">--</p>
+                        <p class="text-xs text-slate-400 mt-1">重量: <span id="totalWeight" class="mono">--</span> 吨</p>
+                    </div>
+                    <div class="stat-icon bg-primary-50">
+                        <svg class="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-5 card-lift stagger-reveal" style="animation-delay: 0.4s">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <p class="stat-label">今日未签收</p>
+                        <p class="text-3xl font-bold text-red-500 mt-1 mono count-animate" id="todayUnsigned">--</p>
+                        <p class="text-xs text-slate-400 mt-1">/ <span id="todayTotal" class="mono">--</span> 单</p>
+                    </div>
+                    <div class="stat-icon bg-red-50">
+                        <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-5 card-lift stagger-reveal" style="animation-delay: 0.5s">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <p class="stat-label">明日应到货</p>
+                        <p class="text-3xl font-bold text-amber-500 mt-1 mono count-animate" id="tomorrowTotal">--</p>
+                        <p class="text-xs text-slate-400 mt-1">未签收 <span id="tomorrowUnsigned" class="mono">--</span></p>
+                    </div>
+                    <div class="stat-icon bg-amber-50">
+                        <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 今日订单统计 + 区域分布 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+            <div class="card p-5 lg:col-span-2 card-lift stagger-reveal" style="animation-delay: 0.6s">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="section-title"><span class="w-1.5 h-5 rounded-full bg-primary-500"></span>今日订单统计</h2>
+                    <div class="flex items-center gap-2">
+                        <button onclick="handleRefreshModule('today-orders')" id="refreshTodayOrdersBtn" class="module-refresh-btn cursor-pointer" title="刷新">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        </button>
+                        <button onclick="openTodayOrdersModal()" class="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors flex items-center gap-1.5 cursor-pointer">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            查询明细
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="text-center p-4 bg-primary-50 rounded-xl border border-primary-100">
+                        <p class="text-2xl font-bold text-primary-600 mono count-animate" id="todayOrdersCount">--</p>
+                        <p class="text-xs text-slate-500 mt-1 uppercase tracking-wider font-medium">订单数</p>
+                    </div>
+                    <div class="text-center p-4 bg-primary-50 rounded-xl border border-primary-100">
+                        <p class="text-2xl font-bold text-primary-600 mono count-animate"><span id="todayOrdersWeight">--</span> <span class="text-sm font-normal text-slate-500">吨</span></p>
+                        <p class="text-xs text-slate-500 mt-1 uppercase tracking-wider font-medium">总重量</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card p-5 card-lift stagger-reveal" style="animation-delay: 0.7s">
+                <h2 class="section-title"><span class="w-1.5 h-5 rounded-full bg-primary-500"></span>区域分布</h2>
+                <div class="space-y-3" id="todayOrdersRegionStats"></div>
+            </div>
+        </div>
+
+        <!-- 分省统计 + 近7天趋势 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+            <div class="card p-5 lg:col-span-2">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="section-title"><span class="w-1.5 h-5 rounded-full bg-primary-500"></span>近7天订单重量趋势</h2>
+                    <div class="flex items-center gap-2">
+                        <button onclick="handleRefreshModule('weekly')" id="refreshWeeklyBtn" class="module-refresh-btn cursor-pointer" title="刷新">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        </button>
+                        <button onclick="openWeeklyOrdersModal()" class="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors flex items-center gap-1.5 cursor-pointer">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            查询明细
+                        </button>
+                    </div>
+                </div>
+                <div style="height: 260px;"><canvas id="weeklyWeightChart"></canvas></div>
+                <div class="flex flex-wrap gap-3 mt-3 justify-center" id="weeklyWeightLegend"></div>
+            </div>
+            <div class="card p-5">
+                <h2 class="section-title"><span class="w-1.5 h-5 rounded-full bg-primary-500"></span>分省详细统计</h2>
+                <div class="space-y-2.5" id="regionDetails"></div>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <span class="font-semibold text-slate-700 text-sm">合计</span>
+                    <div class="flex items-center gap-4">
+                        <div class="text-right">
+                            <p class="text-lg font-bold text-primary-600 mono" id="detailTotalCount">--</p>
+                            <p class="text-[10px] text-slate-400">订单</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-lg font-bold text-primary-600 mono" id="detailTotalWeight">--</p>
+                            <p class="text-[10px] text-slate-400">吨</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分省统计 -->
+        <div class="card p-5 mb-5">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="section-title"><span class="w-1.5 h-5 rounded-full bg-primary-500"></span><span id="regionStatsTitle">省待配载订单统计</span></h2>
+                <button onclick="handleRefreshModule('pending-detail')" id="refreshPendingDetailBtn" class="module-refresh-btn cursor-pointer" title="刷新">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                </button>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3" id="regionStats"></div>
+        </div>
+
+        <!-- 待配载订单列表 -->
+        <div class="card p-5 mb-5">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h2 class="section-title"><span class="w-1.5 h-5 rounded-full bg-primary-500"></span>待配载订单明细</h2>
+                <div class="flex items-center gap-2">
+                    <span class="px-2.5 py-1 bg-slate-100 text-slate-500 text-xs rounded-lg border border-slate-200" id="orderCount">-- 单</span>
+                    <button onclick="handleRefreshModule('pending-detail')" id="refreshPendingBtn" class="flex items-center gap-1 px-3 py-1.5 bg-primary-600 text-white text-xs rounded-lg hover:bg-primary-700 transition font-medium cursor-pointer">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        刷新
+                    </button>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2 mb-3" id="orderFilter">
+                <button class="filter-btn active" data-province="">全部</button>
+            </div>
+            <div class="table-container" style="max-height: none; height: auto;">
+                <table class="w-full text-sm">
+                    <thead class="sticky top-0 bg-slate-50">
+                        <tr class="text-left text-slate-500 text-xs">
+                            <th class="py-2 pr-3 w-8"><input type="checkbox" class="order-checkbox" id="selectAllOrders" onchange="toggleSelectAll(this)" title="全选/取消全选"></th>
+                            <th class="py-2 pr-3">订单号</th>
+                            <th class="py-2 pr-3">区域</th>
+                            <th class="py-2 pr-3">客户</th>
+                            <th class="py-2 pr-3">重量(吨)</th>
+                            <th class="py-2 pr-3">备注</th>
+                            <th class="py-2 pr-3">仓库</th>
+                            <th class="py-2 pr-3">创建时间</th>
+                            <th class="py-2 pr-3">紧急</th>
+                            <th class="py-2">在途</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orderTable"></tbody>
+                </table>
+            </div>
+            <div class="selection-panel" id="selectionPanel">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                        已选订单汇总
+                    </h3>
+                    <button onclick="clearSelection()" class="px-2.5 py-1 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200 transition">取消全选</button>
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div class="text-center p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <p class="text-[10px] text-slate-400 mb-1 uppercase tracking-wider">已选订单数</p>
+                        <p class="text-xl font-bold text-slate-800 mono" id="selectedOrderCount">0</p>
+                    </div>
+                    <div class="text-center p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <p class="text-[10px] text-slate-400 mb-1 uppercase tracking-wider">已选总重量</p>
+                        <p class="text-xl font-bold text-slate-800 mono"><span id="selectedTotalWeight">0</span> <span class="text-xs font-normal text-slate-500">吨</span></p>
+                    </div>
+                </div>
+                <div class="bg-slate-50 rounded-lg border border-slate-200 p-3">
+                    <p class="text-[10px] text-slate-400 mb-2 uppercase tracking-wider">货物详情汇总</p>
+                    <div class="flex flex-wrap gap-2" id="selectedCargoDetails">
+                        <span class="text-slate-400 text-xs">暂无选择</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 发货省份待配载订单 -->
+        <div class="card p-5 mb-5">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h2 class="section-title"><span class="w-1.5 h-5 rounded-full bg-primary-500"></span>发货省份待配载订单</h2>
+                <div class="flex items-center gap-3">
+                    <button onclick="handleRefreshModule('sender-region')" id="refreshSenderBtn" class="module-refresh-btn cursor-pointer" title="刷新">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    </button>
+                    <span class="px-2.5 py-1 bg-slate-100 text-slate-500 text-xs rounded-lg border border-slate-200" id="senderOrderCount">-- 单</span>
+                    <span class="text-xs text-slate-400">总重量: <span id="senderOrderWeight" class="font-medium text-slate-600">--</span> 吨</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4" id="senderRegionStats"></div>
+            <div class="flex flex-wrap gap-2 mb-4" id="senderOrderFilter">
+                <button class="filter-btn active" data-province="">全部</button>
+            </div>
+            <div class="table-container">
+                <table class="w-full text-sm">
+                    <thead class="sticky top-0 bg-slate-50">
+                        <tr class="text-left text-slate-500 text-xs">
+                            <th class="py-2 pr-4">订单号</th>
+                            <th class="py-2 pr-4">发货省份</th>
+                            <th class="py-2 pr-4">收货省份</th>
+                            <th class="py-2 pr-4">总重量(吨)</th>
+                            <th class="py-2 pr-4">配载重量(吨)</th>
+                            <th class="py-2">仓库</th>
+                        </tr>
+                    </thead>
+                    <tbody id="senderOrderTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- KPI处罚统计 -->
+        <div class="card p-5 mb-5">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="section-title"><span class="w-1.5 h-5 rounded-full bg-red-500"></span>KPI类处罚统计</h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="handleRefreshKpi()" id="refreshKpiBtn" class="module-refresh-btn cursor-pointer" title="刷新KPI数据">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    </button>
+                    <button onclick="toggleKpiTableCollapse()" id="kpiCollapseBtn" class="module-refresh-btn cursor-pointer" title="折叠/展开表格">
+                        <svg class="w-4 h-4 kpi-collapse-icon transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <span class="px-2.5 py-1 bg-red-50 text-red-600 text-xs rounded-lg font-medium" id="kpiBadge">--</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="p-4 bg-red-50 rounded-lg border border-red-100">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-red-700" id="kpiPrevPeriodLabel">上一周期</span>
+                        <span class="text-xs text-red-500" id="kpiPrevPeriodDate">--</span>
+                    </div>
+                    <div class="flex items-end gap-4">
+                        <div><p class="text-2xl font-bold text-red-600 mono" id="kpiPrevScore">--</p><p class="text-xs text-slate-400">扣分</p></div>
+                        <div><p class="text-lg font-bold text-slate-700 mono" id="kpiPrevCount">--</p><p class="text-xs text-slate-400">处罚单数</p></div>
+                    </div>
+                </div>
+                <div class="p-4 bg-amber-50 rounded-lg border border-amber-100">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-amber-700" id="kpiCurPeriodLabel">当前周期</span>
+                        <span class="text-xs text-amber-500" id="kpiCurPeriodDate">--</span>
+                    </div>
+                    <div class="flex items-end gap-4">
+                        <div><p class="text-2xl font-bold text-amber-600 mono" id="kpiCurScore">--</p><p class="text-xs text-slate-400">扣分</p></div>
+                        <div><p class="text-lg font-bold text-slate-700 mono" id="kpiCurCount">--</p><p class="text-xs text-slate-400">处罚单数</p></div>
+                    </div>
+                </div>
+            </div>
+            <div id="kpiTableSection" class="transition-all duration-300 overflow-hidden" style="max-height: 2000px;">
+                <div class="flex gap-2 mb-3">
+                    <button class="filter-btn active" id="kpiTabPrev" onclick="switchKpiTab('previous')">上一周期</button>
+                    <button class="filter-btn" id="kpiTabCur" onclick="switchKpiTab('current')">当前周期</button>
+                </div>
+                <div class="mb-3">
+                    <div class="relative">
+                        <input type="text" id="kpiSearchInput" placeholder="输入订单号/异常编号/司机/车牌号搜索..."
+                            class="w-full px-3 py-2 pr-9 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all placeholder:text-slate-400"
+                            oninput="filterKpiTable()">
+                        <svg class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                </div>
+                <div class="mb-3" id="kpiContractFilterSection" style="display: none;"><div class="flex flex-wrap items-center gap-1.5" id="kpiContractBtns"></div></div>
+                <div class="table-container" style="max-height: 350px;">
+                    <table class="w-full text-xs">
+                        <thead class="sticky top-0 bg-slate-50">
+                            <tr class="text-left text-slate-500 text-xs">
+                                <th class="py-2 pr-3">异常编号</th><th class="py-2 pr-3">订单号</th><th class="py-2 pr-3">运营商</th>
+                                <th class="py-2 pr-3">司机</th><th class="py-2 pr-3">车牌号</th><th class="py-2 pr-3">子类</th>
+                                <th class="py-2 pr-3">问题描述</th><th class="py-2 pr-3">扣分</th><th class="py-2 pr-3">日期</th>
+                                <th class="py-2 pr-3">合同</th><th class="py-2 pr-3">客户</th><th class="py-2 pr-3">发货区域</th><th class="py-2">收货区域</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kpiOrderTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 今日/明日应到货 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <button onclick="switchDeliveryDay(-1)" id="deliveryPrevBtn" class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer" title="前一天">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                        </button>
+                        <h2 class="section-title mb-0" id="deliveryPanelTitle">今日应到货 - 未签收</h2>
+                        <button onclick="switchDeliveryDay(1)" id="deliveryNextBtn" class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer" title="后一天">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="handleRefreshModule('overview')" id="refreshOverviewBtn" class="module-refresh-btn cursor-pointer" title="刷新">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        </button>
+                        <span class="px-2.5 py-1 bg-red-50 text-red-600 text-xs rounded-lg font-medium" id="deliveryPanelBadge">-- 单</span>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3" id="deliveryPanelFilter">
+                    <button class="filter-btn active" data-province="">全部</button>
+                </div>
+                <div id="deliveryPanelOrders"><div class="text-center py-10 text-slate-400 text-sm">加载中...</div></div>
+            </div>
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="section-title mb-0">明日应到货订单</h2>
+                    <span class="px-2.5 py-1 bg-slate-100 text-slate-500 text-xs rounded-lg font-medium" id="tomorrowBadge">-- 单</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3" id="tomorrowFilter">
+                    <button class="filter-btn active" data-province="">全部</button>
+                </div>
+                <div id="tomorrowOrders"><div class="text-center py-10 text-slate-400 text-sm">加载中...</div></div>
+            </div>
+        </div>
+
+        <!-- 页脚 -->
+        <footer class="mt-10 pb-8 text-center">
+            <div class="inline-flex items-center gap-3 text-xs text-slate-400">
+                <span class="w-8 h-px bg-slate-200"></span>
+                <span>王友小助手</span>
+                <span class="text-slate-300">|</span>
+                <span>数据每5分钟自动更新</span>
+                <span class="w-8 h-px bg-slate-200"></span>
+            </div>
+        </footer>
+    </main>
+
+    <!-- 刷新状态指示器 -->
+    <div id="refreshStatus" class="fixed top-4 right-4 z-50 transition-all duration-200" style="display: none;">
+        <div class="bg-white rounded-xl shadow-lg border border-slate-200 px-4 py-3 flex items-center gap-3 min-w-[180px]">
+            <div class="loading-spinner-small"></div>
+            <div class="flex-1">
+                <p class="text-xs font-semibold text-slate-800" id="refreshStatusText">刷新中...</p>
+                <p class="text-[11px] text-slate-400" id="refreshStatusDetail">正在加载数据</p>
+            </div>
+            <div id="refreshProgress" class="text-xs font-medium text-primary-600 bg-primary-50 px-2 py-1 rounded-lg hidden mono">0%</div>
+        </div>
+    </div>
+
+    <!-- 近7天订单详情弹窗 -->
+    <div id="weeklyOrdersModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden m-4">
+            <div class="flex items-center justify-between p-5 border-b border-slate-200">
+                <h3 class="text-lg font-semibold text-slate-800">近7天订单明细</h3>
+                <button onclick="closeWeeklyOrdersModal()" class="p-2 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"><svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div id="weeklyOrdersContent" class="p-5 overflow-y-auto max-h-[80vh]"><div class="text-center py-12 text-slate-400">点击查询按钮加载数据...</div></div>
+        </div>
+    </div>
+
+    <!-- 今日订单详情弹窗 -->
+    <div id="todayOrdersModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden m-4">
+            <div class="flex items-center justify-between p-5 border-b border-slate-200">
+                <h3 class="text-lg font-semibold text-slate-800">今日配载订单明细</h3>
+                <button onclick="closeTodayOrdersModal()" class="p-2 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"><svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div id="todayOrdersContent" class="p-5 overflow-y-auto max-h-[80vh]"><div class="text-center py-12 text-slate-400">点击查询按钮加载数据...</div></div>
+        </div>
+    </div>
+
+    <!-- 订单搜索结果弹窗 -->
+    <div id="searchOrderModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden m-4">
+            <div class="flex items-center justify-between p-5 border-b border-slate-200">
+                <h3 class="text-lg font-semibold text-slate-800" id="searchModalTitle">订单查询结果</h3>
+                <button onclick="closeSearchModal()" class="p-2 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"><svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div id="searchOrderContent" class="p-5 overflow-y-auto max-h-[80vh]"><div class="text-center py-12 text-slate-400">输入订单号进行查询...</div></div>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = ['#2563eb', '#f97316', '#10b981', '#ef4444', '#8b5cf6'];
+        const TARGET_PROVINCES = ['湖南', '湖北', '安徽', '新疆', '河北'];
+        let weeklyWeightChart = null;
+        let todayProvince = '', tomorrowProvince = '', activeDeliveryDay = 0, activeDeliveryProvince = '';
+        let orderProvince = '', senderProvince = '';
+        let cachedDeliveryData = null, cachedData = null;
+        let allOrders = [], allSenderOrders = [];
+        let selectedProvinces = [], allProvinces = [], selectedProvincesSet = new Set();
+        let selectedNetworks = [], allNetworks = [], selectedNetworksSet = new Set();
+
+        function formatNumber(num) { return (num === undefined || num === null || isNaN(num)) ? '--' : Number(num).toLocaleString('zh-CN'); }
+        function formatWeight(kg) { return (kg === undefined || kg === null || isNaN(kg)) ? '--' : formatNumber(parseFloat((kg / 1000).toFixed(10))); }
+
+        let refreshTimer = null, refreshStartTime = null;
+        function showRefreshStatus(text, detail) {
+            const el = document.getElementById('refreshStatus');
+            document.getElementById('refreshStatusText').textContent = text || '刷新中...';
+            document.getElementById('refreshStatusDetail').textContent = detail || '正在加载数据';
+            document.getElementById('refreshProgress').classList.add('hidden');
+            el.style.display = 'block';
+            refreshStartTime = Date.now();
+            clearInterval(refreshTimer);
+            refreshTimer = setInterval(() => { document.getElementById('refreshStatusDetail').textContent = `已耗时 ${((Date.now() - refreshStartTime) / 1000).toFixed(1)}s`; }, 100);
+        }
+        function updateRefreshProgress(current, total) { const el = document.getElementById('refreshProgress'); el.textContent = `${Math.round((current / total) * 100)}%`; el.classList.remove('hidden'); }
+        function hideRefreshStatus() { clearInterval(refreshTimer); document.getElementById('refreshStatusDetail').textContent = `完成，耗时 ${((Date.now() - refreshStartTime) / 1000).toFixed(1)}s`; setTimeout(() => { document.getElementById('refreshStatus').style.display = 'none'; }, 1500); }
+
+        async function fetchDashboard() {
+            try {
+                const resp = await fetch('/api/dashboard', { cache: 'no-cache' });
+                const result = await resp.json();
+                if (result.success) {
+                    cachedData = result.data;
+                    updateUI(result.data);
+                    document.getElementById('lastUpdate').textContent = result.data.last_update || result.server_time;
+                    if (result.selected_provinces) { selectedProvinces = result.selected_provinces; selectedProvincesSet = new Set(selectedProvinces); updateSelectedCount(); }
+                    if (result.all_provinces) { allProvinces = result.all_provinces; renderProvinceCheckboxes(); }
+                    if (result.selected_networks) { selectedNetworks = result.selected_networks; selectedNetworksSet = new Set(selectedNetworks); updateSelectedNetworkCount(); }
+                    if (result.all_networks) { allNetworks = result.all_networks; renderNetworkCheckboxes(); }
+                }
+            } catch (err) { console.error('获取数据失败:', err); }
+        }
+
+        async function handleRefresh() {
+            const btn = document.getElementById('refreshBtn'), icon = document.getElementById('refreshIcon');
+            showRefreshStatus('全局刷新中', '正在同步配置并刷新数据...');
+            btn.disabled = true; icon.classList.add('animate-spin');
+            try {
+                const resp = await fetch('/api/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provinces: Array.from(selectedProvincesSet), networks: Array.from(selectedNetworksSet) }) });
+                const result = await resp.json();
+                if (result.success) {
+                    if (result.provinces) { selectedProvinces = result.provinces; selectedProvincesSet = new Set(selectedProvinces); updateSelectedCount(); }
+                    if (result.networks) { selectedNetworks = result.networks; selectedNetworksSet = new Set(selectedNetworks); updateSelectedNetworkCount(); }
+                    await fetchDashboard();
+                } else { alert('刷新失败: ' + (result.message || '未知错误')); }
+            } catch (err) { alert('刷新失败，请检查网络连接'); } finally { hideRefreshStatus(); btn.disabled = false; icon.classList.remove('animate-spin'); }
+        }
+
+        async function handleRefreshModule(module) {
+            const btnMap = { 'overview': 'refreshOverviewBtn', 'pending-detail': 'refreshPendingDetailBtn', 'sender-region': 'refreshSenderBtn', 'weekly': 'refreshWeeklyBtn', 'today-orders': 'refreshTodayOrdersBtn' };
+            const nameMap = { 'overview': '概览', 'pending-detail': '待配载订单', 'sender-region': '发货省份', 'weekly': '近7天趋势', 'today-orders': '今日订单' };
+            const btn = document.getElementById(btnMap[module]); if (!btn) return;
+            btn.disabled = true; btn.classList.add('spinning');
+            showRefreshStatus(`刷新${nameMap[module]}`, '正在获取最新数据...');
+            try {
+                const resp = await fetch(`/api/refresh/${module}`, { method: 'POST' });
+                const result = await resp.json();
+                if (result.success) { const dataResp = await fetch('/api/dashboard', { cache: 'no-cache' }); const data = await dataResp.json(); if (data.success) { cachedData = data.data; updateUI(data.data); document.getElementById('lastUpdate').textContent = data.data.last_update || new Date().toLocaleString('zh-CN'); } }
+                else { alert(`刷新${nameMap[module]}失败: ` + (result.message || '未知错误')); }
+            } catch (err) { alert(`刷新${nameMap[module]}异常`); } finally { hideRefreshStatus(); btn.disabled = false; btn.classList.remove('spinning'); }
+        }
+
+        let kpiLoaded = false;
+        async function handleRefreshKpi() {
+            const btn = document.getElementById('refreshKpiBtn'); if (btn) { btn.disabled = true; btn.classList.add('spinning'); }
+            try {
+                const resp = await fetch('/api/refresh/kpi', { method: 'POST' });
+                const result = await resp.json();
+                if (result.success) { const dataResp = await fetch('/api/kpi-penalty'); const kpiData = await dataResp.json(); updateKpiPenalty(kpiData); kpiLoaded = true; }
+                else { alert('刷新KPI失败: ' + (result.message || '未知错误')); }
+            } catch (err) { alert('刷新KPI异常'); } finally { if (btn) { btn.disabled = false; btn.classList.remove('spinning'); } }
+        }
+
+        function updateUI(data) {
+            const autoMonitor = data.auto_monitor;
+            const todayUnsigned = data.today_unsigned;
+            const tomorrowUnsigned = data.tomorrow_unsigned;
+            document.getElementById('totalCount').textContent = formatNumber(autoMonitor.total_count);
+            document.getElementById('totalWeight').textContent = formatNumber(autoMonitor.total_weight);
+            document.getElementById('todayUnsigned').textContent = formatNumber(todayUnsigned.unsigned_count);
+            document.getElementById('todayTotal').textContent = formatNumber(todayUnsigned.total_orders);
+            document.getElementById('tomorrowTotal').textContent = formatNumber(tomorrowUnsigned.total_orders);
+            document.getElementById('tomorrowUnsigned').textContent = formatNumber(tomorrowUnsigned.unsigned_count);
+            updateRegionStats(autoMonitor.regions);
+            updateRegionDetails(data.region_stats);
+            updateOrderTable(data.manual_query.orders);
+            cachedDeliveryData = { yesterday: data.yesterday_unsigned || {}, today: data.today_unsigned || {}, tomorrow: data.tomorrow_unsigned || {} };
+            renderDeliveryPanel();
+            updateTomorrowOrders(data.tomorrow_unsigned);
+            if (data.weekly_weight) updateWeeklyWeightChart(data.weekly_weight);
+            if (data.sender_region_orders) updateSenderRegionOrders(data.sender_region_orders);
+            if (data.today_orders) updateTodayOrdersStats(data.today_orders);
+        }
+
+        function updateRegionStats(regions) {
+            const container = document.getElementById('regionStats');
+            container.innerHTML = regions.map((r, i) => `<div class="text-center p-3 bg-slate-50 rounded-lg border border-slate-100"><p class="text-lg font-bold mono" style="color: ${COLORS[i]}">${r.count}</p><p class="text-xs text-slate-500">${r.region}</p><p class="text-xs text-slate-400 mono">${formatWeight(r.weight)} 吨</p></div>`).join('');
+        }
+
+        function updateRegionDetails(regionStats) {
+            const container = document.getElementById('regionDetails');
+            const maxCount = Math.max(...regionStats.region_details.map(r => r.count), 1);
+            container.innerHTML = regionStats.region_details.map((r, i) => `<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg"><div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full" style="background-color: ${COLORS[i]}"></div><span class="text-sm font-medium">${r.region}</span></div><div class="flex items-center gap-4"><div class="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div class="h-full rounded-full" style="width: ${(r.count / maxCount * 100).toFixed(0)}%; background-color: ${COLORS[i]}"></div></div><div class="text-right w-12"><p class="text-sm font-bold mono">${r.count}</p></div><div class="text-right w-16"><p class="text-sm font-bold mono">${formatWeight(r.weight)}</p></div></div></div>`).join('');
+            document.getElementById('detailTotalCount').textContent = regionStats.total_count;
+            document.getElementById('detailTotalWeight').textContent = formatWeight(regionStats.total_weight);
+        }
+
+        function updateOrderTable(orders) {
+            allOrders = orders; resetSelection();
+            const provinces = [...new Set(orders.map(o => { const region = o.region || ''; for (const p of ['湖北', '湖南', '新疆', '河北', '安徽', '河南', '广东', '山东', '江苏', '浙江', '福建', '四川', '贵州', '云南', '陕西', '甘肃', '青海', '内蒙古', '广西', '西藏', '宁夏', '海南', '山西', '辽宁', '吉林', '黑龙江', '江西']) { if (region.includes(p)) return p; } return region; }))].filter(Boolean).sort();
+            const filterEl = document.getElementById('orderFilter');
+            let filterHtml = `<button class="filter-btn ${orderProvince === '' ? 'active' : ''}" data-province="">全部</button>`;
+            provinces.forEach(p => { filterHtml += `<button class="filter-btn ${orderProvince === p ? 'active' : ''}" data-province="${p}">${p}</button>`; });
+            filterEl.innerHTML = filterHtml;
+            filterEl.querySelectorAll('.filter-btn').forEach(btn => { btn.onclick = () => { orderProvince = btn.dataset.province; filterEl.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); filterOrderTable(); }; });
+            filterOrderTable();
+        }
+
+        function filterOrderTable() {
+            const tbody = document.getElementById('orderTable');
+            let orders = orderProvince && orderProvince !== '全部' ? allOrders.filter(o => o.region && o.region.includes(orderProvince)) : allOrders;
+            document.getElementById('orderCount').textContent = `${orders.length} 单`;
+            if (orders.length === 0) { tbody.innerHTML = `<tr><td colspan="10" class="py-8 text-center text-slate-400">暂无数据</td></tr>`; document.getElementById('selectionPanel').classList.remove('show'); return; }
+            window._filteredOrders = orders; document.getElementById('selectAllOrders').checked = false;
+            tbody.innerHTML = orders.map((o, idx) => `<tr class="border-b border-slate-100 hover:bg-slate-50" data-order-index="${idx}"><td class="py-2 pr-3"><input type="checkbox" class="order-checkbox order-cb" data-index="${idx}" onchange="handleOrderCheckbox()"></td><td class="py-2 pr-3 font-mono text-xs">${o.order_no}</td><td class="py-2 pr-3"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">${o.region}</span></td><td class="py-2 pr-3 text-xs text-slate-600 max-w-[100px] truncate" title="${o.customer || '无'}">${o.customer || '无'}</td><td class="py-2 pr-3 text-xs mono">${formatWeight(o.weight)}</td><td class="py-2 pr-3 text-xs text-slate-600 max-w-[120px] truncate" title="${o.remark || ''}">${o.remark || '-'}</td><td class="py-2 pr-3 text-xs text-slate-500">${o.warehouse}</td><td class="py-2 pr-3 text-xs text-slate-500">${o.order_date || '-'}</td><td class="py-2 pr-3"><span class="px-2 py-0.5 text-xs rounded ${o.urgent_flag_custom === '紧急' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}">${o.urgent_flag_custom || '-'}</span></td><td class="py-2"><span class="px-2 py-0.5 text-xs rounded ${o.the_way_flag_custom === '在途' ? 'bg-primary-100 text-primary-600' : 'bg-slate-100 text-slate-500'}">${o.the_way_flag_custom || '-'}</span></td></tr>`).join('');
+            restoreCheckboxStates(); updateSelectionPanel();
+        }
+
+        let selectedOrderNos = new Set();
+        function toggleSelectAll(checkbox) { const orders = window._filteredOrders || []; const cbs = document.querySelectorAll('.order-cb'); if (checkbox.checked) { orders.forEach(o => selectedOrderNos.add(o.order_no)); cbs.forEach(cb => cb.checked = true); } else { orders.forEach(o => selectedOrderNos.delete(o.order_no)); cbs.forEach(cb => cb.checked = false); } updateSelectionPanel(); }
+        function handleOrderCheckbox() { const orders = window._filteredOrders || []; const cbs = document.querySelectorAll('.order-cb'); selectedOrderNos.clear(); cbs.forEach(cb => { const idx = parseInt(cb.dataset.index); if (cb.checked && orders[idx]) selectedOrderNos.add(orders[idx].order_no); }); document.getElementById('selectAllOrders').checked = orders.length > 0 && cbs.length === orders.length && Array.from(cbs).every(cb => cb.checked); updateSelectionPanel(); }
+        function restoreCheckboxStates() { const orders = window._filteredOrders || []; const cbs = document.querySelectorAll('.order-cb'); cbs.forEach(cb => { const idx = parseInt(cb.dataset.index); if (orders[idx] && selectedOrderNos.has(orders[idx].order_no)) cb.checked = true; else cb.checked = false; }); }
+        function updateSelectionPanel() { const orders = window._filteredOrders || []; const cbs = document.querySelectorAll('.order-cb'); const panel = document.getElementById('selectionPanel'); const selectedOrders = []; cbs.forEach(cb => { const idx = parseInt(cb.dataset.index); if (cb.checked && orders[idx]) selectedOrders.push(orders[idx]); }); if (selectedOrders.length === 0) { panel.classList.remove('show'); return; } panel.classList.add('show'); const totalWeight = selectedOrders.reduce((sum, o) => sum + (o.weight || 0), 0); const cargoMap = {}; selectedOrders.forEach(o => { (o.cargo_details || []).forEach(d => { const key = d.type || '未知'; cargoMap[key] = (cargoMap[key] || 0) + (d.count || 0); }); }); document.getElementById('selectedOrderCount').textContent = selectedOrders.length; document.getElementById('selectedTotalWeight').textContent = formatWeight(totalWeight); const cargoEl = document.getElementById('selectedCargoDetails'); const cargoKeys = Object.keys(cargoMap); cargoEl.innerHTML = cargoKeys.length > 0 ? cargoKeys.map(k => `<span class="cargo-tag">${k}<span class="cargo-count">${formatNumber(cargoMap[k])} 件</span></span>`).join('') : '<span class="text-slate-400 text-xs">无货物详情数据</span>'; }
+        function clearSelection() { selectedOrderNos.clear(); document.querySelectorAll('.order-cb').forEach(cb => cb.checked = false); document.getElementById('selectAllOrders').checked = false; updateSelectionPanel(); }
+        function resetSelection() { selectedOrderNos.clear(); document.getElementById('selectAllOrders').checked = false; document.getElementById('selectionPanel').classList.remove('show'); }
+
+        function updateTomorrowOrders(data) {
+            document.getElementById('tomorrowBadge').textContent = `${data.unsigned_count} 单`;
+            const allOrders = data.unsigned_orders || [];
+            const provinces = [...new Set(allOrders.map(o => o.province).filter(p => p && p !== '未知'))].sort();
+            const filterEl = document.getElementById('tomorrowFilter');
+            let filterHtml = `<button class="filter-btn ${tomorrowProvince === '' ? 'active' : ''}" data-province="">全部</button>`;
+            provinces.forEach(p => { filterHtml += `<button class="filter-btn ${tomorrowProvince === p ? 'active' : ''}" data-province="${p}">${p}</button>`; });
+            filterEl.innerHTML = filterHtml;
+            filterEl.querySelectorAll('.filter-btn').forEach(btn => { btn.onclick = () => { tomorrowProvince = btn.dataset.province; filterEl.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); filterTomorrowOrders(data); }; });
+            filterTomorrowOrders(data);
+        }
+
+        function filterTomorrowOrders(data) {
+            const container = document.getElementById('tomorrowOrders');
+            let orders = data.unsigned_orders || [];
+            if (tomorrowProvince && tomorrowProvince !== '全部') orders = orders.filter(o => o.province === tomorrowProvince);
+            if (orders.length === 0) { container.innerHTML = '<div class="text-center py-10 text-slate-400 text-sm">暂无未签收订单</div>'; return; }
+            container.innerHTML = orders.map(o => `<div class="order-item amber"><div class="flex items-center justify-between mb-1"><span class="font-mono text-xs font-medium">${o.order_no || '无'}</span><span class="px-2 py-0.5 bg-amber-100 text-amber-600 text-xs rounded">${o.status || '未知'}</span></div><div class="flex items-center gap-3 text-xs"><span class="font-medium">${o.receive_name || '无'}</span><span class="text-slate-500">${o.receiver_phone || '无'}</span></div><p class="text-xs text-slate-600 font-medium">${o.province || ''}${o.city || ''}${o.district || ''}</p>${o.detailed_address ? `<p class="text-[11px] text-slate-500">${o.detailed_address}</p>` : ''}${o.signed_weight ? `<p class="text-[11px] text-amber-600 font-medium">⚖️ ${formatWeight(o.signed_weight)} 吨</p>` : ''}${o.receive_time ? `<p class="text-[11px] text-slate-400 mt-0.5">🕐 ${o.receive_time}</p>` : ''}${o.delivery_date ? `<p class="text-[11px] text-amber-600 font-medium mt-0.5">需求到货: ${o.delivery_date}</p>` : ''}</div>`).join('');
+        }
+
+        function switchDeliveryDay(delta) { const newDay = activeDeliveryDay + delta; if (newDay < -1 || newDay > 1) return; activeDeliveryDay = newDay; activeDeliveryProvince = ''; renderDeliveryPanel(); }
+        function renderDeliveryPanel() {
+            if (!cachedDeliveryData) return;
+            const dayMap = { '-1': { key: 'yesterday', label: '昨日应到货 - 未签收', badgeBg: 'bg-blue-100', badgeText: 'text-blue-600', orderStyle: 'blue' }, '0': { key: 'today', label: '今日应到货 - 未签收', badgeBg: 'bg-red-100', badgeText: 'text-red-600', orderStyle: 'red' }, '1': { key: 'tomorrow', label: '明日应到货订单', badgeBg: 'bg-amber-100', badgeText: 'text-amber-600', orderStyle: 'amber' } };
+            const config = dayMap[String(activeDeliveryDay)];
+            const data = cachedDeliveryData[config.key] || {};
+            const allOrders = data.unsigned_orders || [];
+            document.getElementById('deliveryPanelTitle').textContent = config.label;
+            document.getElementById('deliveryPanelBadge').textContent = `${data.unsigned_count || 0} 单`;
+            document.getElementById('deliveryPanelBadge').className = `px-2.5 py-1 ${config.badgeBg} ${config.badgeText} text-xs rounded-lg font-medium`;
+            document.getElementById('deliveryPrevBtn').style.visibility = activeDeliveryDay <= -1 ? 'hidden' : 'visible';
+            document.getElementById('deliveryNextBtn').style.visibility = activeDeliveryDay >= 1 ? 'hidden' : 'visible';
+            const provinces = [...new Set(allOrders.map(o => o.province).filter(p => p && p !== '未知'))].sort();
+            const filterEl = document.getElementById('deliveryPanelFilter');
+            let filterHtml = `<button class="filter-btn ${activeDeliveryProvince === '' ? 'active' : ''}" data-province="">全部</button>`;
+            provinces.forEach(p => { filterHtml += `<button class="filter-btn ${activeDeliveryProvince === p ? 'active' : ''}" data-province="${p}">${p}</button>`; });
+            filterEl.innerHTML = filterHtml;
+            filterEl.querySelectorAll('.filter-btn').forEach(btn => { btn.onclick = () => { activeDeliveryProvince = btn.dataset.province; filterEl.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderDeliveryOrders(allOrders, config); }; });
+            renderDeliveryOrders(allOrders, config);
+        }
+
+        function renderDeliveryOrders(allOrders, config) {
+            const container = document.getElementById('deliveryPanelOrders');
+            let orders = activeDeliveryProvince && activeDeliveryProvince !== '全部' ? allOrders.filter(o => o.province === activeDeliveryProvince) : allOrders;
+            if (orders.length === 0) { container.innerHTML = '<div class="text-center py-10 text-slate-400 text-sm">暂无未签收订单</div>'; return; }
+            const s = config.orderStyle;
+            container.innerHTML = orders.map(o => `<div class="order-item ${s}"><div class="flex items-center justify-between mb-1"><span class="font-mono text-xs font-medium">${o.order_no || '无'}</span><span class="px-2 py-0.5 bg-${s === 'blue' ? 'blue' : s === 'amber' ? 'amber' : 'red'}-100 text-${s === 'blue' ? 'blue' : s === 'amber' ? 'amber' : 'red'}-600 text-xs rounded">${o.status || '未知'}</span></div><div class="flex items-center gap-3 text-xs"><span class="font-medium">${o.receive_name || '无'}</span><span class="text-slate-500">${o.receiver_phone || '无'}</span></div><p class="text-xs text-slate-600 font-medium">${o.province || ''}${o.city || ''}${o.district || ''}</p>${o.detailed_address ? `<p class="text-[11px] text-slate-500">${o.detailed_address}</p>` : ''}${o.signed_weight ? `<p class="text-[11px] text-${s === 'blue' ? 'blue' : s === 'amber' ? 'amber' : 'red'}-600 font-medium">⚖️ ${formatWeight(o.signed_weight)} 吨</p>` : ''}${o.receive_time ? `<p class="text-[11px] text-slate-400 mt-0.5">🕐 ${o.receive_time}</p>` : ''}${o.delivery_date ? `<p class="text-[11px] text-${s === 'blue' ? 'blue' : s === 'amber' ? 'amber' : 'red'}-600 font-medium mt-0.5">需求到货: ${o.delivery_date}</p>` : ''}</div>`).join('');
+        }
+
+        function updateWeeklyWeightChart(weeklyData) {
+            const ctx = document.getElementById('weeklyWeightChart').getContext('2d');
+            if (weeklyWeightChart) weeklyWeightChart.destroy();
+            let labels = weeklyData.labels || [], datasets = [];
+            if (weeklyData.datasets && weeklyData.datasets.length > 0) { datasets = weeklyData.datasets.map((ds, idx) => ({ label: ds.branch_id || ds.warehouse_id || ds.outlet_id || ds.province, data: ds.data.map(v => v / 1000), borderColor: ds.color || COLORS[idx], backgroundColor: (ds.color || COLORS[idx]) + '20', tension: 0.4, fill: false, pointRadius: 4, pointHoverRadius: 6 })); }
+            else if (weeklyData.data && weeklyData.data.length > 0) { datasets = [{ label: '配载总重量', data: weeklyData.data.map(v => v / 1000), borderColor: '#2563eb', backgroundColor: '#2563eb20', tension: 0.4, fill: true, pointRadius: 5, pointHoverRadius: 7 }]; }
+            weeklyWeightChart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${formatNumber(ctx.raw)} 吨` } } }, scales: { y: { beginAtZero: true, title: { display: true, text: '重量 (吨)' } }, x: { title: { display: true, text: '日期' } } } } });
+            const totalWeight = (weeklyData.data || []).reduce((a, b) => a + b, 0);
+            document.getElementById('weeklyWeightLegend').innerHTML = `<div class="flex items-center gap-4 text-lg"><span class="font-bold text-primary-600 mono">${formatWeight(totalWeight)} 吨</span><span class="text-slate-500">近7天配载总重量</span></div>`;
+        }
+
+        function updateTodayOrdersStats(data) {
+            if (!data) return;
+            document.getElementById('todayOrdersCount').textContent = formatNumber(data.total_count);
+            document.getElementById('todayOrdersWeight').textContent = formatWeight(data.total_weight);
+            const container = document.getElementById('todayOrdersRegionStats');
+            const regions = data.region_details || [];
+            container.innerHTML = regions.map((r, i) => `<div class="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100"><div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full" style="background-color: ${COLORS[i % COLORS.length]}"></div><span class="text-xs font-medium text-slate-600">${r.region}</span></div><div class="text-right"><span class="text-xs font-bold mono" style="color: ${COLORS[i % COLORS.length]}">${r.count}</span> <span class="text-[10px] text-slate-400">${formatWeight(r.weight)}吨</span></div></div>`).join('');
+        }
+
+        function updateSenderRegionOrders(data) {
+            const statsContainer = document.getElementById('senderRegionStats');
+            const regions = data.region_details || [];
+            statsContainer.innerHTML = regions.map((r, i) => `<div class="text-center p-3 bg-slate-50 rounded-lg border border-slate-100"><p class="text-lg font-bold mono" style="color: ${COLORS[i]}">${r.count}</p><p class="text-xs text-slate-500">${r.region}</p><p class="text-xs text-slate-400 mono">${formatWeight(r.weight)} 吨</p></div>`).join('');
+            document.getElementById('senderOrderCount').textContent = `${data.total_count} 单`;
+            document.getElementById('senderOrderWeight').textContent = formatWeight(data.total_weight);
+            allSenderOrders = data.orders || [];
+            const provinces = [...new Set(allSenderOrders.map(o => { const region = o.sender_region || ''; for (const p of ['湖北', '湖南', '新疆', '河北', '安徽']) { if (region.includes(p)) return p; } return region; }))].filter(Boolean).sort();
+            const filterEl = document.getElementById('senderOrderFilter');
+            let filterHtml = `<button class="filter-btn ${senderProvince === '' ? 'active' : ''}" data-province="">全部</button>`;
+            provinces.forEach(p => { filterHtml += `<button class="filter-btn ${senderProvince === p ? 'active' : ''}" data-province="${p}">${p}</button>`; });
+            filterEl.innerHTML = filterHtml;
+            filterEl.querySelectorAll('.filter-btn').forEach(btn => { btn.onclick = () => { senderProvince = btn.dataset.province; filterEl.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); filterSenderOrderTable(); }; });
+            filterSenderOrderTable();
+        }
+
+        function filterSenderOrderTable() {
+            const tbody = document.getElementById('senderOrderTable');
+            let orders = senderProvince && senderProvince !== '全部' ? allSenderOrders.filter(o => o.sender_region && o.sender_region.includes(senderProvince)) : allSenderOrders;
+            const displayOrders = orders.slice(0, 100);
+            tbody.innerHTML = displayOrders.map(o => `<tr class="border-b border-slate-100 hover:bg-slate-50"><td class="py-2 pr-4 font-mono text-xs">${o.order_no}</td><td class="py-2 pr-4"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">${o.sender_region || '无'}</span></td><td class="py-2 pr-4"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">${o.receive_region || '无'}</span></td><td class="py-2 pr-4 text-xs mono">${formatWeight(o.weight)}</td><td class="py-2 pr-4 text-amber-600 font-medium text-xs mono">${formatWeight(o.stowage_weight)}</td><td class="py-2 text-xs text-slate-500">${o.warehouse}</td></tr>`).join('');
+            if (orders.length === 0) tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">暂无数据</td></tr>`;
+        }
+
+        let kpiCurrentTab = 'previous', kpiData = null, kpiContractFilterSet = new Set(), kpiContractAllSelected = true, kpiTableCollapsed = false;
+        function updateKpiPenalty(data) {
+            kpiData = data;
+            const periods = data.periods || {}, prev = data.previous_period || {}, cur = data.current_period || {};
+            document.getElementById('kpiPrevPeriodLabel').textContent = '上一周期';
+            document.getElementById('kpiCurPeriodLabel').textContent = '当前周期';
+            if (periods.previous) document.getElementById('kpiPrevPeriodDate').textContent = periods.previous.start + ' ~ ' + periods.previous.end;
+            if (periods.current) document.getElementById('kpiCurPeriodDate').textContent = periods.current.start + ' ~ ' + periods.current.end;
+            document.getElementById('kpiPrevScore').textContent = prev.total_score ?? '--';
+            document.getElementById('kpiPrevCount').textContent = prev.count ?? '--';
+            document.getElementById('kpiCurScore').textContent = cur.total_score ?? '--';
+            document.getElementById('kpiCurCount').textContent = cur.count ?? '--';
+            document.getElementById('kpiBadge').textContent = `${(prev.count || 0) + (cur.count || 0)} 条处罚`;
+            renderKpiTable(kpiCurrentTab);
+        }
+
+        function switchKpiTab(tab) { kpiCurrentTab = tab; document.getElementById('kpiTabPrev').classList.toggle('active', tab === 'previous'); document.getElementById('kpiTabCur').classList.toggle('active', tab === 'current'); renderKpiTable(tab); }
+        function filterKpiTable() { renderKpiTable(kpiCurrentTab); }
+
+        function renderKpiTable(tab) {
+            const tbody = document.getElementById('kpiOrderTable');
+            if (!kpiData) { tbody.innerHTML = '<tr><td colspan="13" class="py-8 text-center text-slate-400">暂无数据</td></tr>'; return; }
+            const periodData = tab === 'previous' ? kpiData.previous_period : kpiData.current_period;
+            let orders = periodData.orders || [];
+            const allContracts = [...new Set(orders.map(o => o.contract || '-'))].sort();
+            buildKpiContractFilter(allContracts);
+            const searchInput = document.getElementById('kpiSearchInput');
+            const keyword = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            if (keyword) { orders = orders.filter(o => (o.order_no || '').toLowerCase().includes(keyword) || (o.exception_no || '').toLowerCase().includes(keyword) || (o.driver || '').toLowerCase().includes(keyword) || (o.license_plate || '').toLowerCase().includes(keyword) || (o.carrier || '').toLowerCase().includes(keyword) || (o.customer || '').toLowerCase().includes(keyword) || (o.contract || '').toLowerCase().includes(keyword) || (o.description || '').toLowerCase().includes(keyword)); }
+            if (!kpiContractAllSelected && kpiContractFilterSet.size > 0) { orders = orders.filter(o => kpiContractFilterSet.has(o.contract || '-')); }
+            if (orders.length === 0) { tbody.innerHTML = '<tr><td colspan="13" class="py-8 text-center text-slate-400">该周期暂无KPI处罚记录</td></tr>'; return; }
+            tbody.innerHTML = orders.map(o => `<tr class="border-b border-slate-100 hover:bg-slate-50"><td class="py-2 pr-3 font-mono text-xs text-slate-500">${o.exception_no || '-'}</td><td class="py-2 pr-3 font-mono text-xs">${o.order_no || '-'}</td><td class="py-2 pr-3 text-xs">${o.carrier || '-'}</td><td class="py-2 pr-3 text-xs">${o.driver || '-'}</td><td class="py-2 pr-3 text-xs">${o.license_plate || '-'}</td><td class="py-2 pr-3"><span class="px-2 py-0.5 text-xs rounded ${getSubclassBadgeClass(o.subclass)}">${o.subclass || '-'}</span></td><td class="py-2 text-xs text-slate-600" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(o.description || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')}">${o.description || '-'}</td><td class="py-2 pr-3"><span class="font-bold ${o.score > 0 ? 'text-red-600' : 'text-slate-400'}">${o.score > 0 ? o.score : '-'}</span></td><td class="py-2 pr-3 text-xs text-slate-500">${o.date || '-'}</td><td class="py-2 pr-3 text-xs">${o.contract || '-'}</td><td class="py-2 pr-3 text-xs">${o.customer || '-'}</td><td class="py-2 pr-3 text-xs">${o.send_region || '-'}</td><td class="py-2 text-xs">${o.receive_region || '-'}</td></tr>`).join('');
+        }
+
+        function buildKpiContractFilter(contracts) {
+            const section = document.getElementById('kpiContractFilterSection');
+            const btnsContainer = document.getElementById('kpiContractBtns');
+            if (!contracts || contracts.length <= 1) { section.style.display = 'none'; return; }
+            section.style.display = 'block';
+            let html = `<button class="filter-btn ${kpiContractAllSelected ? 'active' : ''}" onclick="toggleKpiContractAll(${JSON.stringify(contracts).replace(/"/g, '&quot;')})" style="font-weight: 600;">全选</button>`;
+            contracts.forEach(c => { const selected = kpiContractAllSelected || kpiContractFilterSet.has(c); html += `<button class="filter-btn ${selected ? 'active' : ''}" onclick="toggleKpiContract('${c.replace(/'/g, "\\'")}')">${c}</button>`; });
+            btnsContainer.innerHTML = html;
+        }
+
+        function toggleKpiContractAll(contracts) { if (kpiContractAllSelected) { kpiContractAllSelected = false; kpiContractFilterSet.clear(); } else { kpiContractAllSelected = true; kpiContractFilterSet.clear(); } renderKpiTable(kpiCurrentTab); }
+        function toggleKpiContract(contract) {
+            if (kpiContractAllSelected) { kpiContractAllSelected = false; const periodData = kpiCurrentTab === 'previous' ? kpiData.previous_period : kpiData.current_period; const orders = periodData.orders || []; [...new Set(orders.map(o => o.contract || '-'))].forEach(c => kpiContractFilterSet.add(c)); kpiContractFilterSet.delete(contract); }
+            else { if (kpiContractFilterSet.has(contract)) kpiContractFilterSet.delete(contract); else kpiContractFilterSet.add(contract); const periodData = kpiCurrentTab === 'previous' ? kpiData.previous_period : kpiData.current_period; const orders = periodData.orders || []; if ([...new Set(orders.map(o => o.contract || '-'))].every(c => kpiContractFilterSet.has(c))) { kpiContractAllSelected = true; kpiContractFilterSet.clear(); } }
+            renderKpiTable(kpiCurrentTab);
+        }
+
+        function toggleKpiTableCollapse() { kpiTableCollapsed = !kpiTableCollapsed; const section = document.getElementById('kpiTableSection'); const icon = document.querySelector('.kpi-collapse-icon'); if (kpiTableCollapsed) { section.style.maxHeight = '0px'; section.style.opacity = '0'; icon.style.transform = 'rotate(-90deg)'; } else { section.style.maxHeight = '2000px'; section.style.opacity = '1'; icon.style.transform = 'rotate(0deg)'; } }
+        function getSubclassBadgeClass(subclass) { const map = { '延误': 'bg-red-100 text-red-600', '投诉': 'bg-orange-100 text-orange-600', '安全违规': 'bg-yellow-100 text-yellow-700', '服务态度': 'bg-purple-100 text-purple-600' }; return map[subclass] || 'bg-slate-100 text-slate-600'; }
+
+        function toggleConfig(type) { document.getElementById(type + 'CollapseIcon').classList.toggle('collapsed'); document.getElementById(type + 'ConfigContent').classList.toggle('collapsed'); }
+        function renderProvinceCheckboxes() {
+            const container = document.getElementById('provinceCheckboxes');
+            container.innerHTML = allProvinces.map(p => `<label class="checkbox-item ${selectedProvincesSet.has(p) ? 'selected' : ''}" data-province="${p}"><input type="checkbox" value="${p}" ${selectedProvincesSet.has(p) ? 'checked' : ''}><span class="checkmark"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg></span><span>${p}</span></label>`).join('');
+            container.querySelectorAll('.checkbox-item').forEach(item => { item.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); const province = this.dataset.province; const checkbox = this.querySelector('input[type="checkbox"]'); if (selectedProvincesSet.has(province)) { selectedProvincesSet.delete(province); this.classList.remove('selected'); checkbox.checked = false; } else { selectedProvincesSet.add(province); this.classList.add('selected'); checkbox.checked = true; } updateSelectedCount(); }); });
+            updateSelectedCount();
+        }
+        function updateSelectedCount() { document.getElementById('selectedCount').textContent = selectedProvincesSet.size; document.getElementById('regionStatsTitle').textContent = selectedProvincesSet.size + '省待配载订单统计'; }
+        async function saveProvinces() {
+            const btn = document.getElementById('saveProvinceBtn'); btn.disabled = true; btn.innerHTML = '<svg class="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> 保存中...';
+            try { const resp = await fetch('/api/provinces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provinces: Array.from(selectedProvincesSet) }) }); const result = await resp.json(); if (result.success) await handleRefresh(); else alert('保存失败: ' + (result.message || '未知错误')); } catch (err) { alert('保存失败，请重试'); } finally { btn.disabled = false; btn.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> 保存'; }
+        }
+        async function loadProvinceConfig() { try { const resp = await fetch('/api/provinces'); const result = await resp.json(); if (result.success !== false) { selectedProvinces = result.selected || []; allProvinces = result.all || []; selectedProvincesSet = new Set(selectedProvinces); renderProvinceCheckboxes(); } } catch (err) { selectedProvinces = ['湖南', '湖北', '新疆', '河北', '安徽']; selectedProvincesSet = new Set(selectedProvinces); allProvinces = ['河北', '山西', '辽宁', '吉林', '黑龙江', '江苏', '浙江', '安徽', '福建', '江西', '山东', '河南', '湖北', '湖南', '广东', '海南', '四川', '贵州', '云南', '陕西', '甘肃', '青海', '内蒙古', '广西', '西藏', '宁夏', '新疆', '北京', '上海', '天津', '重庆']; renderProvinceCheckboxes(); } }
+
+        function renderNetworkCheckboxes() {
+            const container = document.getElementById('networkCheckboxes');
+            container.innerHTML = allNetworks.map(n => `<label class="checkbox-item ${selectedNetworksSet.has(n) ? 'selected' : ''}" data-network="${n}"><input type="checkbox" value="${n}" ${selectedNetworksSet.has(n) ? 'checked' : ''}><span class="checkmark"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg></span><span>${n}</span></label>`).join('');
+            container.querySelectorAll('.checkbox-item').forEach(item => { item.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); const network = this.dataset.network; const checkbox = this.querySelector('input[type="checkbox"]'); if (selectedNetworksSet.has(network)) { selectedNetworksSet.delete(network); this.classList.remove('selected'); checkbox.checked = false; } else { selectedNetworksSet.add(network); this.classList.add('selected'); checkbox.checked = true; } updateSelectedNetworkCount(); }); });
+            updateSelectedNetworkCount();
+        }
+        function updateSelectedNetworkCount() { document.getElementById('selectedNetworkCount').textContent = selectedNetworksSet.size; }
+        async function saveNetworks() {
+            const btn = document.getElementById('saveNetworkBtn'); btn.disabled = true; btn.innerHTML = '<svg class="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> 保存中...';
+            try { const resp = await fetch('/api/networks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ networks: Array.from(selectedNetworksSet) }) }); const result = await resp.json(); if (result.success) await handleRefresh(); else alert('保存失败: ' + (result.message || '未知错误')); } catch (err) { alert('保存失败，请重试'); } finally { btn.disabled = false; btn.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> 保存'; }
+        }
+        async function loadNetworkConfig() { try { const resp = await fetch('/api/networks'); const result = await resp.json(); if (result.success !== false) { selectedNetworks = result.selected || []; allNetworks = result.all || []; selectedNetworksSet = new Set(selectedNetworks); renderNetworkCheckboxes(); } } catch (err) { selectedNetworks = ['零担']; selectedNetworksSet = new Set(selectedNetworks); allNetworks = ['江南', '非凡', '讯服', '江北', '零担']; renderNetworkCheckboxes(); } }
+
+        function toggleTrackedOrdersPanel() {
+            const body = document.getElementById('trackedOrdersPanelBody'); const chevron = document.getElementById('trackedPanelChevron');
+            if (body.style.maxHeight === '0px' || body.style.maxHeight === '') { body.style.maxHeight = '0px'; body.style.opacity = '0'; body.offsetHeight; body.style.maxHeight = body.scrollHeight + 'px'; body.style.opacity = '1'; chevron.style.transform = 'rotate(180deg)'; renderTrackedOrdersTable(); setTimeout(() => { body.style.maxHeight = 'none'; }, 300); }
+            else { body.style.maxHeight = body.scrollHeight + 'px'; body.offsetHeight; body.style.maxHeight = '0px'; body.style.opacity = '0'; chevron.style.transform = ''; }
+        }
+        function updateTrackedOrderCount() { const count = getTrackedOrders().length; const countEl = document.getElementById('trackedOrderCount'); const tableCount = document.getElementById('trackedOrderTableCount'); if (countEl) countEl.textContent = count; if (tableCount) tableCount.textContent = count; }
+        const TRACKED_ORDERS_KEY = 'tracked_orders';
+        function getTrackedOrders() { try { return JSON.parse(localStorage.getItem(TRACKED_ORDERS_KEY) || '[]'); } catch (e) { return []; } }
+        function saveTrackedOrders(orders) { localStorage.setItem(TRACKED_ORDERS_KEY, JSON.stringify(orders)); }
+        function isOrderTracked(orderNo) { return getTrackedOrders().some(o => o.order_no === orderNo); }
+        function toggleTrackOrderFromSearch(idx) { const results = window._currentSearchResults; if (!results || !results[idx]) return; const o = results[idx]; const orders = getTrackedOrders(); const existIdx = orders.findIndex(t => t.order_no === o.order_no); if (existIdx >= 0) orders.splice(existIdx, 1); else orders.push({ order_no: o.order_no, customer_name: o.customer_group || '', status: o.status || '', delivery_date: o.delivery_date || '', receive_address: [o.province, o.city, o.district].filter(Boolean).join('') + ' ' + (o.detailed_address || ''), weight: o.stowage_weight ? (o.stowage_weight / 1000).toFixed(2) : '0.00', remark: '', marked_at: Date.now() }); saveTrackedOrders(orders); updateTrackedOrderCount(); const content = document.getElementById('searchOrderContent'); if (window._currentSearchResults) renderSearchResults(window._currentSearchResults, content); }
+        function deleteTrackedOrder(orderNo) { if (!confirm('确定移除此订单？')) return; saveTrackedOrders(getTrackedOrders().filter(o => o.order_no !== orderNo)); renderTrackedOrdersTable(); updateTrackedOrderCount(); }
+        function updateTrackedOrderRemark(el) { const orderNo = el.getAttribute('data-order-no'); const orders = getTrackedOrders(); const order = orders.find(o => o.order_no === orderNo); if (order) { order.remark = el.value; saveTrackedOrders(orders); } }
+        async function refreshTrackedOrders() {
+            const orders = getTrackedOrders(); if (orders.length === 0) return;
+            const tbody = document.getElementById('trackedOrdersTableBody');
+            tbody.innerHTML = '<tr><td colspan="8"><div class="text-center py-8"><div class="loading-spinner mx-auto mb-3"></div><p class="text-slate-500 text-sm">正在刷新订单信息...</p></div></td></tr>';
+            try {
+                const resp = await fetch('/api/tracked-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order_nos: orders.map(o => o.order_no) }) });
+                const result = await resp.json();
+                if (result.success) { const apiOrderNos = new Set(result.data.map(d => d.order_no)); const remarkMap = {}, markedAtMap = {}; orders.forEach(o => { remarkMap[o.order_no] = o.remark || ''; markedAtMap[o.order_no] = o.marked_at || Date.now(); }); const merged = result.data.map(item => ({ order_no: item.order_no, customer_name: item.customer_name || item.customer_group || '', status: item.status || '', delivery_date: item.delivery_date || '', receive_address: item.receive_address || '', weight: item.weight || 0, remark: remarkMap[item.order_no] || '', marked_at: markedAtMap[item.order_no] || Date.now() })); const notFound = orders.filter(o => !apiOrderNos.has(o.order_no)); notFound.forEach(o => { o.status = o.status || '(未找到)'; }); saveTrackedOrders([...merged, ...notFound]); updateTrackedOrderCount(); renderTrackedOrdersTable(); }
+                else { tbody.innerHTML = `<tr><td colspan="8"><div class="text-center py-8 text-red-500">刷新失败: ${escapeHtml(result.message)}</div></td></tr>`; }
+            } catch (err) { tbody.innerHTML = `<tr><td colspan="8"><div class="text-center py-8 text-red-500">网络错误</div></td></tr>`; }
+        }
+        function renderTrackedOrdersTable() {
+            const orders = getTrackedOrders(); const tbody = document.getElementById('trackedOrdersTableBody');
+            if (orders.length === 0) { tbody.innerHTML = '<tr><td colspan="8"><div class="text-center py-8 text-slate-400 text-xs">暂无重点订单</div></td></tr>'; return; }
+            orders.sort((a, b) => (b.marked_at || 0) - (a.marked_at || 0));
+            let html = ''; orders.forEach(o => { const statusClass = o.status === '已签收' ? 'badge-success' : (o.status && o.status.includes('已发车')) ? 'badge-warning' : 'badge-info'; const weight = typeof o.weight === 'number' ? o.weight.toFixed(2) : (parseFloat(o.weight) || 0).toFixed(2); html += `<tr><td class="font-mono text-xs">${escapeHtml(o.order_no)}</td><td class="text-xs">${escapeHtml(o.customer_name) || '--'}</td><td><span class="badge ${statusClass}">${escapeHtml(o.status) || '--'}</span></td><td class="text-xs">${escapeHtml(o.delivery_date) || '--'}</td><td class="text-xs max-w-[150px] truncate" title="${escapeHtml(o.receive_address || '')}">${escapeHtml(o.receive_address) || '--'}</td><td class="text-xs text-right mono">${weight}</td><td><textarea data-order-no="${escapeHtml(o.order_no)}" class="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:border-primary-400 focus:ring-1 focus:ring-primary-200 outline-none resize-none bg-white hover:border-slate-300 transition-colors" rows="2" placeholder="添加备注..." onblur="updateTrackedOrderRemark(this)">${escapeHtml(o.remark || '')}</textarea></td><td class="text-center"><button onclick="deleteTrackedOrder('${escapeHtml(o.order_no).replace(/'/g, "\\'")}')" class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="取消标记"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></td></tr>`; });
+            tbody.innerHTML = html;
+        }
+        updateTrackedOrderCount();
+
+        async function handleSearchOrder() {
+            const input = document.getElementById('searchOrderInput'); const orderNo = input.value.trim();
+            if (!orderNo) { input.focus(); return; }
+            const modal = document.getElementById('searchOrderModal'); const content = document.getElementById('searchOrderContent'); const title = document.getElementById('searchModalTitle');
+            modal.style.display = 'flex'; title.textContent = `查询中: ${orderNo}`;
+            content.innerHTML = '<div class="text-center py-12"><div class="loading-spinner mx-auto mb-4"></div><p class="text-slate-500">正在查询...</p></div>';
+            try {
+                const resp = await fetch(`/api/search-order?order_no=${encodeURIComponent(orderNo)}`); const result = await resp.json();
+                if (result.success && result.data.length > 0) { title.textContent = `查询结果: ${orderNo} (${result.total}条)`; renderSearchResults(result.data, content); }
+                else if (result.success && result.data.length === 0) { title.textContent = `查询结果: ${orderNo}`; content.innerHTML = '<div class="text-center py-12"><svg class="w-16 h-16 mx-auto text-slate-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-slate-400 text-lg">未找到相关订单</p></div>'; }
+                else { title.textContent = '查询失败'; content.innerHTML = `<div class="text-center py-12 text-red-400">${result.message || '查询失败'}</div>`; }
+            } catch (err) { title.textContent = '查询失败'; content.innerHTML = `<div class="text-center py-12 text-red-400">网络错误</div>`; }
+        }
+
+        function renderSearchResults(orders, container) {
+            window._currentSearchResults = orders;
+            let html = '<div class="space-y-4">';
+            orders.forEach((o, idx) => { const statusColor = o.status === '已签收' ? 'success' : o.status === '已发货' ? 'info' : 'warning'; const isTracked = isOrderTracked(o.order_no);
+                html += `<div class="border border-slate-200 rounded-xl overflow-hidden"><div class="bg-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-100"><div class="flex items-center gap-3"><span class="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-0.5 rounded">#${idx + 1}</span><span class="font-semibold text-slate-800">${o.order_no || '--'}</span></div><div class="flex items-center gap-2">${o.transport_order_no ? `<button onclick="printQualityCheck('${o.transport_order_no}')" class="px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer" title="打印质检单"><svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>质检单</button><button onclick="printBatchOrder('${o.transport_order_no}', '${(o.receive_name || '').replace(/'/g, "\\'")}')" class="px-3 py-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer" title="打印批次单"><svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>批次单</button>` : ''}<button onclick="toggleTrackOrderFromSearch(${idx})" class="p-1.5 rounded-lg transition-colors cursor-pointer ${isTracked ? 'text-red-500 bg-red-50 hover:bg-red-100' : 'text-slate-300 hover:text-red-400 hover:bg-red-50'}" title="${isTracked ? '取消标记' : '标记为重点订单'}"><svg class="w-5 h-5" fill="${isTracked ? 'currentColor' : 'none'}" stroke="currentColor" viewBox="0 0 24 24"><path ${isTracked ? '' : 'stroke-linecap="round" stroke-linejoin="round" stroke-width="2"'} d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"></path></svg></button><span class="badge badge-${statusColor}">${o.status || '--'}</span></div></div><div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm"><div><span class="text-slate-400">收货方:</span> <span class="font-medium text-slate-700">${o.receive_name || '--'}</span></div><div><span class="text-slate-400">电话:</span> <span class="font-medium text-slate-700">${o.receiver_phone || '--'}</span></div><div><span class="text-slate-400">客户组:</span> <span class="font-medium text-slate-700">${o.customer_group || '--'}</span></div><div><span class="text-slate-400">司机:</span> <span class="font-medium text-slate-700">${o.driver || '--'}</span></div><div><span class="text-slate-400">车牌号:</span> <span class="font-medium text-slate-700">${o.license_plate || '--'}</span></div><div><span class="text-slate-400">网点:</span> <span class="font-medium text-slate-700">${o.network || '--'}</span></div><div><span class="text-slate-400">省/市/区:</span> <span class="font-medium text-slate-700">${[o.province, o.city, o.district].filter(Boolean).join(' / ') || '--'}</span></div><div class="md:col-span-2"><span class="text-slate-400">详细地址:</span> <span class="font-medium text-slate-700">${o.detailed_address || '--'}</span></div><div><span class="text-slate-400">配载重量:</span> <span class="font-semibold text-primary-600">${o.stowage_weight ? (o.stowage_weight / 1000).toFixed(2) + ' 吨' : '--'}</span></div><div><span class="text-slate-400">下单时间:</span> <span class="text-slate-600">${o.order_date || '--'}</span></div><div><span class="text-slate-400">需求到货:</span> <span class="text-slate-600">${o.delivery_date || '--'}</span></div></div></div>`; });
+            html += '</div>'; container.innerHTML = html;
+        }
+        function closeSearchModal() { document.getElementById('searchOrderModal').style.display = 'none'; }
+        function printQualityCheck(transportOrderNo) { window.open(`http://rep.etransfar.com:8989/webroot/decision/view/form?viewlet=16735%2Fbarcode_qm%2Fbarcode_qm2_pdf2_byPSD_NoMat.frm&PSD1=${encodeURIComponent(transportOrderNo)}`, '_blank'); }
+        function printBatchOrder(transportOrderNo, receiveName) { window.open(`http://rep.etransfar.com:8989/webroot/decision/view/report?viewlet=16735%2FFAHUOPICI%2FFAHUOPICIDAN.cpt&XM=${encodeURIComponent(receiveName)}&FHD=${encodeURIComponent(transportOrderNo)}`, '_blank'); }
+        document.getElementById('searchOrderModal').addEventListener('click', function(e) { if (e.target === this) closeSearchModal(); });
+
+        function openWeeklyOrdersModal() {
+            const modal = document.getElementById('weeklyOrdersModal'); const content = document.getElementById('weeklyOrdersContent');
+            modal.style.display = 'flex'; content.innerHTML = '<div class="text-center py-12"><div class="loading-spinner mx-auto mb-4"></div><p class="text-slate-500">正在查询近7天订单...</p></div>';
+            fetch('/api/weekly-orders', { method: 'POST' }).then(resp => resp.json()).then(result => { if (result.success) renderWeeklyOrders(result.data); else content.innerHTML = `<div class="text-center py-12 text-red-500">查询失败: ${result.message}</div>`; }).catch(err => { content.innerHTML = `<div class="text-center py-12 text-red-500">请求失败</div>`; });
+        }
+        function closeWeeklyOrdersModal() { document.getElementById('weeklyOrdersModal').style.display = 'none'; }
+        function renderWeeklyOrders(data) {
+            const content = document.getElementById('weeklyOrdersContent'); let html = ''; let totalCount = 0, totalWeight = 0;
+            data.forEach(day => { totalCount += day.count; totalWeight += day.total_weight; });
+            html += `<div class="flex items-center justify-between mb-4 p-4 bg-primary-50 rounded-xl border border-primary-100"><div class="flex gap-8"><div><p class="text-sm text-slate-500">订单总数</p><p class="text-xl font-bold text-primary-600 mono">${totalCount}</p></div><div><p class="text-sm text-slate-500">配载总重量</p><p class="text-xl font-bold text-primary-600 mono">${formatWeight(totalWeight)} 吨</p></div></div></div>`;
+            data.forEach(day => {
+                html += `<div class="mb-4 border border-slate-200 rounded-xl overflow-hidden"><div class="flex items-center justify-between p-3 bg-slate-50"><div class="flex items-center gap-4"><span class="font-medium">${day.date}</span><span class="px-2 py-0.5 bg-primary-100 text-primary-700 text-sm rounded">${day.count} 单</span></div><span class="font-bold text-primary-600">${formatWeight(day.total_weight)} 吨</span></div>`;
+                if (day.orders.length > 0) { html += `<table class="w-full text-sm"><thead class="bg-slate-50"><tr class="text-left text-slate-500 text-xs"><th class="py-2 px-3">订单号</th><th class="py-2 px-3">收货方</th><th class="py-2 px-3">省份</th><th class="py-2 px-3">配载重量(吨)</th></tr></thead><tbody>`; day.orders.forEach(o => { html += `<tr class="border-t"><td class="py-2 px-3 font-mono text-xs">${o.order_no}</td><td class="py-2 px-3">${o.receive_name || '无'}</td><td class="py-2 px-3">${o.province || '无'}</td><td class="py-2 px-3 text-primary-600 font-medium mono">${formatWeight(o.stowage_weight)}</td></tr>`; }); html += '</tbody></table>'; } else { html += '<div class="p-4 text-center text-slate-400">暂无数据</div>'; } html += '</div>';
+            }); content.innerHTML = html;
+        }
+        document.getElementById('weeklyOrdersModal').addEventListener('click', function(e) { if (e.target === this) closeWeeklyOrdersModal(); });
+
+        function openTodayOrdersModal() {
+            const modal = document.getElementById('todayOrdersModal'); const content = document.getElementById('todayOrdersContent');
+            modal.style.display = 'flex'; content.innerHTML = '<div class="text-center py-12"><div class="loading-spinner mx-auto mb-4"></div><p class="text-slate-500">正在查询今日订单...</p></div>';
+            fetch('/api/today-orders', { method: 'POST' }).then(resp => resp.json()).then(result => { if (result.success) renderTodayOrdersDetail(result.data); else content.innerHTML = `<div class="text-center py-12 text-red-500">查询失败: ${result.message}</div>`; }).catch(err => { content.innerHTML = `<div class="text-center py-12 text-red-500">请求失败</div>`; });
+        }
+        function closeTodayOrdersModal() { document.getElementById('todayOrdersModal').style.display = 'none'; }
+        function renderTodayOrdersDetail(data) {
+            allTodayOrders = data.detail_orders || []; const content = document.getElementById('todayOrdersContent');
+            const provinces = [...new Set(allTodayOrders.map(o => o.province).filter(p => p && p !== '未知'))].sort();
+            let html = `<div class="flex items-center justify-between mb-4 p-4 bg-primary-50 rounded-xl border border-primary-100"><div class="flex gap-8"><div><p class="text-sm text-slate-500">订单总数</p><p class="text-xl font-bold text-primary-600 mono">${data.total_count}</p></div><div><p class="text-sm text-slate-500">配载总重量</p><p class="text-xl font-bold text-primary-600 mono">${formatWeight(data.total_weight)} 吨</p></div></div></div>`;
+            html += `<div class="flex flex-wrap gap-2 mb-4" id="todayOrdersFilter"><button class="filter-btn active" onclick="filterTodayOrdersDetail('')">全部</button>`; provinces.forEach(p => { html += `<button class="filter-btn" onclick="filterTodayOrdersDetail('${p}')">${p}</button>`; }); html += '</div><div id="todayOrdersDetailTable"></div>';
+            content.innerHTML = html; todayOrdersProvince = ''; filterTodayOrdersDetail('');
+        }
+        let todayOrdersProvince = '', allTodayOrders = [];
+        function filterTodayOrdersDetail(province) {
+            todayOrdersProvince = province; const container = document.getElementById('todayOrdersDetailTable');
+            const filterEl = document.getElementById('todayOrdersFilter'); if (filterEl) filterEl.querySelectorAll('.filter-btn').forEach(btn => { btn.classList.toggle('active', btn.textContent === (province || '全部')); });
+            let orders = province ? allTodayOrders.filter(o => o.province === province) : allTodayOrders;
+            if (orders.length === 0) { container.innerHTML = '<div class="text-center py-8 text-slate-400">暂无数据</div>'; return; }
+            let html = `<table class="w-full text-sm"><thead class="bg-slate-50 sticky top-0"><tr class="text-left text-slate-500 text-xs"><th class="py-2 px-3">订单号</th><th class="py-2 px-3">收货方</th><th class="py-2 px-3">省份</th><th class="py-2 px-3">配载重量(吨)</th><th class="py-2 px-3">配载时间</th></tr></thead><tbody>`;
+            orders.forEach(o => { html += `<tr class="border-t hover:bg-slate-50"><td class="py-2 px-3 font-mono text-xs">${o.order_no}</td><td class="py-2 px-3">${o.receive_name || '无'}</td><td class="py-2 px-3">${o.province || '无'}</td><td class="py-2 px-3 text-primary-600 font-medium mono">${formatWeight(o.weight)}</td><td class="py-2 px-3 text-xs text-slate-500">${o.create_time || '-'}</td></tr>`; });
+            html += '</tbody></table>'; container.innerHTML = html;
+        }
+        document.getElementById('todayOrdersModal').addEventListener('click', function(e) { if (e.target === this) closeTodayOrdersModal(); });
+
+        function escapeHtml(str) { if (!str && str !== 0) return ''; const div = document.createElement('div'); div.textContent = String(str); return div.innerHTML; }
+
+        showRefreshStatus('首次加载', '正在从服务器获取数据...');
+        fetchDashboard().then(() => { hideRefreshStatus(); setTimeout(() => handleRefreshKpi(), 1000); });
+        loadProvinceConfig(); loadNetworkConfig();
+        setInterval(fetchDashboard, 300000);
+    </script>
+</body>
+</html>

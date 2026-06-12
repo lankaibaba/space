@@ -6,3 +6,5 @@ dist/
 *.spec
 network_config.txt
 province_config.txt
+deploy/
+submission/
