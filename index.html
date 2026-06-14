@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>王友小助手</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         * {
             font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -99,7 +99,6 @@
             animation: spin 0.8s linear infinite;
             flex-shrink: 0;
         }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
         .table-container { max-height: 320px; overflow-y: auto; }
         .table-container::-webkit-scrollbar { width: 8px; }
         .table-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
@@ -1407,14 +1406,12 @@
                     if (data.success) {
                         cachedData = data.data;
 
-                        // 并行更新待配载订单相关数据
-                        await Promise.all([
-                            updatePendingOverviewAsync(data.data.auto_monitor),
-                            updateRegionStatsAsync(data.data.auto_monitor.regions),
-                            updateRegionDetailsAsync(data.data.region_stats),
-                            updateOrderTableAsync(data.data.manual_query.orders),
-                            updateSenderRegionOrdersAsync(data.data.sender_region_orders)
-                        ]);
+                        // 更新待配载订单相关数据
+                        updatePendingOverviewAsync(data.data.auto_monitor);
+                        updateRegionStatsAsync(data.data.auto_monitor.regions);
+                        updateRegionDetailsAsync(data.data.region_stats);
+                        updateOrderTableAsync(data.data.manual_query.orders);
+                        updateSenderRegionOrdersAsync(data.data.sender_region_orders);
                         // 更新时间戳
                         document.getElementById('lastUpdate').textContent = data.data.last_update || new Date().toLocaleString('zh-CN');
                     }
@@ -1470,97 +1467,39 @@
         }
 
         function updateUI(data) {
-            // 并行更新各板块数据，每个板块独立 catch 确保一个失败不影响其他
             const updatePanel = (name, fn) => {
-                try {
-                    fn();
-                } catch (err) {
-                    console.error(`[updateUI] 更新板块 ${name} 失败:`, err);
-                }
+                try { fn(); } catch (err) { console.error(`[updateUI] 更新板块 ${name} 失败:`, err); }
             };
 
-            Promise.all([
-                // 板块1: 概览卡片
-                new Promise(resolve => {
-                    updatePanel('概览卡片', () => {
-                        const autoMonitor = data.auto_monitor;
-                        const todayUnsigned = data.today_unsigned;
-                        const tomorrowUnsigned = data.tomorrow_unsigned;
-                        document.getElementById('totalCount').textContent = formatNumber(autoMonitor.total_count);
-                        document.getElementById('totalWeight').textContent = formatWeight(autoMonitor.total_weight);
-                        document.getElementById('todayUnsigned').textContent = formatNumber(todayUnsigned.unsigned_count);
-                        document.getElementById('todayTotal').textContent = formatNumber(todayUnsigned.total_orders);
-                        document.getElementById('tomorrowTotal').textContent = formatNumber(tomorrowUnsigned.total_orders);
-                        document.getElementById('tomorrowUnsigned').textContent = formatNumber(tomorrowUnsigned.unsigned_count);
-                    });
-                    resolve();
-                }),
-                // 板块2: 五省统计 + 分省详情
-                new Promise(resolve => {
-                    updatePanel('五省统计', () => {
-                        const regions = data.auto_monitor.regions;
-                        updateRegionStats(regions);
-                        updateRegionDetails(data.region_stats);
-                    });
-                    resolve();
-                }),
-                // 板块3: 待配载订单列表
-                new Promise(resolve => {
-                    updatePanel('待配载订单', () => {
-                        updateOrderTable(data.manual_query.orders);
-                    });
-                    resolve();
-                }),
-                // 板块4: 今日/明日/昨日未签收（并行）
-                new Promise(resolve => {
-                    updatePanel('未签收', () => {
-                        cachedDeliveryData = {
-                            yesterday: data.yesterday_unsigned || {},
-                            today: data.today_unsigned || {},
-                            tomorrow: data.tomorrow_unsigned || {}
-                        };
-                        renderDeliveryPanel();
-                        updateTomorrowOrders(data.tomorrow_unsigned);
-                    });
-                    resolve();
-                }),
-                // 板块5: 近7天趋势图
-                new Promise(resolve => {
-                    updatePanel('近7天趋势', () => {
-                        if (data.weekly_weight) {
-                            updateWeeklyWeightChart(data.weekly_weight);
-                        }
-                    });
-                    resolve();
-                }),
-                // 板块6: 发货省份待配载订单
-                new Promise(resolve => {
-                    updatePanel('发货省份', () => {
-                        if (data.sender_region_orders) {
-                            updateSenderRegionOrders(data.sender_region_orders);
-                        }
-                    });
-                    resolve();
-                }),
-                // 板块7: 今日订单统计
-                new Promise(resolve => {
-                    updatePanel('今日订单', () => {
-                        if (data.today_orders) {
-                            updateTodayOrdersStats(data.today_orders);
-                        }
-                    });
-                    resolve();
-                }),
-                // 板块8: 在途订单数量
-                new Promise(resolve => {
-                    updatePanel('在途订单', () => {
-                        updateIntransitCount(data.intransit_today_count);
-                    });
-                    resolve();
-                })
-            ]).catch(err => {
-                console.error('[updateUI] Promise.all 未预期的错误:', err);
+            updatePanel('概览卡片', () => {
+                const autoMonitor = data.auto_monitor;
+                const todayUnsigned = data.today_unsigned;
+                const tomorrowUnsigned = data.tomorrow_unsigned;
+                document.getElementById('totalCount').textContent = formatNumber(autoMonitor.total_count);
+                document.getElementById('totalWeight').textContent = formatWeight(autoMonitor.total_weight);
+                document.getElementById('todayUnsigned').textContent = formatNumber(todayUnsigned.unsigned_count);
+                document.getElementById('todayTotal').textContent = formatNumber(todayUnsigned.total_orders);
+                document.getElementById('tomorrowTotal').textContent = formatNumber(tomorrowUnsigned.total_orders);
+                document.getElementById('tomorrowUnsigned').textContent = formatNumber(tomorrowUnsigned.unsigned_count);
             });
+            updatePanel('五省统计', () => {
+                updateRegionStats(data.auto_monitor.regions);
+                updateRegionDetails(data.region_stats);
+            });
+            updatePanel('待配载订单', () => { updateOrderTable(data.manual_query.orders); });
+            updatePanel('未签收', () => {
+                cachedDeliveryData = {
+                    yesterday: data.yesterday_unsigned || {},
+                    today: data.today_unsigned || {},
+                    tomorrow: data.tomorrow_unsigned || {}
+                };
+                renderDeliveryPanel();
+                updateTomorrowOrders(data.tomorrow_unsigned);
+            });
+            updatePanel('近7天趋势', () => { if (data.weekly_weight) updateWeeklyWeightChart(data.weekly_weight); });
+            updatePanel('发货省份', () => { if (data.sender_region_orders) updateSenderRegionOrders(data.sender_region_orders); });
+            updatePanel('今日订单', () => { if (data.today_orders) updateTodayOrdersStats(data.today_orders); });
+            updatePanel('在途订单', () => { updateIntransitCount(data.intransit_today_count); });
         }
 
         function updateRegionStats(regions) {
@@ -2579,11 +2518,11 @@
                     if (result.success) {
                         renderIntransitOrders(result.data);
                     } else {
-                        content.innerHTML = `<div class="text-center py-12 text-red-500">查询失败: ${result.message}</div>`;
+                        content.innerHTML = `<div class="text-center py-12 text-red-500">查询失败: ${escapeHtml(result.message)}</div>`;
                     }
                 })
                 .catch(err => {
-                    content.innerHTML = `<div class="text-center py-12 text-red-500">请求失败: ${err.message}</div>`;
+                    content.innerHTML = `<div class="text-center py-12 text-red-500">请求失败: ${escapeHtml(err.message)}</div>`;
                 });
         }
 
@@ -2600,11 +2539,11 @@
                     if (result.success) {
                         renderIntransitOrders(result.data);
                     } else {
-                        content.innerHTML = `<div class="text-center py-12 text-red-500">刷新失败: ${result.message}</div>`;
+                        content.innerHTML = `<div class="text-center py-12 text-red-500">刷新失败: ${escapeHtml(result.message)}</div>`;
                     }
                 })
                 .catch(err => {
-                    content.innerHTML = `<div class="text-center py-12 text-red-500">刷新失败: ${err.message}</div>`;
+                    content.innerHTML = `<div class="text-center py-12 text-red-500">刷新失败: ${escapeHtml(err.message)}</div>`;
                 });
         }
 
@@ -2613,11 +2552,11 @@
         }
 
         function renderIntransitOrders(data) {
-            allIntransitOrders = data.orders || [];
+            allIntransitOrders = (data && data.orders) || [];
             intransitAddressFilter = '';
             intransitStatusFilter = '';
 
-            document.getElementById('intransitTotalCount').textContent = `共 ${data.total_count} 单`;
+            document.getElementById('intransitTotalCount').textContent = `共 ${data ? data.total_count : 0} 单`;
 
             // 直接渲染表格（含表头下拉框）
             renderIntransitTable(data);
@@ -2652,64 +2591,53 @@
                 return;
             }
 
-            let html = '<div class="table-container" style="max-height:none;height:auto"><table class="data-table"><thead><tr>';
-            html += '<th>单号</th>';
-            html += '<th>司机名称</th>';
-            html += '<th>客户名称</th>';
-            html += '<th>业务员</th>';
-            // 配载单状态下拉筛选
-            html += '<th><div class="flex items-center gap-1"><span>配载单状态</span>';
-            html += `<select class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white" onchange="applyIntransitFilter('status', this.value)">`;
-            html += `<option value=""${intransitStatusFilter === '' ? ' selected' : ''}>全部</option>`;
-            statuses.forEach(s => {
-                html += `<option value="${s.replace(/"/g, '&quot;')}"${intransitStatusFilter === s ? ' selected' : ''}>${s}</option>`;
-            });
-            html += '</select></div></th>';
-            html += '<th>创建日期</th>';
-            // 收货地址省份下拉筛选
-            html += '<th><div class="flex items-center gap-1"><span>收货地址</span>';
-            html += `<select class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white" onchange="applyIntransitFilter('address', this.value)">`;
-            html += `<option value=""${intransitAddressFilter === '' ? ' selected' : ''}>全部</option>`;
-            provinces.forEach(p => {
-                html += `<option value="${p.replace(/"/g, '&quot;')}"${intransitAddressFilter === p ? ' selected' : ''}>${p}</option>`;
-            });
-            html += '</select></div></th>';
-            html += '<th>收货人</th>';
-            html += '<th>要求到货时间</th>';
-            html += '<th>重量(吨)</th>';
-            html += '</tr></thead><tbody>';
+            const headerParts = [
+                '<div class="table-container" style="max-height:none;height:auto"><table class="data-table"><thead><tr>',
+                '<th>单号</th>', '<th>司机名称</th>', '<th>客户名称</th>', '<th>业务员</th>',
+                '<th><div class="flex items-center gap-1"><span>配载单状态</span>',
+                `<select class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white" onchange="applyIntransitFilter('status', this.value)">`,
+                `<option value=""${intransitStatusFilter === '' ? ' selected' : ''}>全部</option>`,
+                ...statuses.map(s => `<option value="${escapeHtml(s)}"${intransitStatusFilter === s ? ' selected' : ''}>${escapeHtml(s)}</option>`),
+                '</select></div></th>',
+                '<th>创建日期</th>',
+                '<th><div class="flex items-center gap-1"><span>收货地址</span>',
+                `<select class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white" onchange="applyIntransitFilter('address', this.value)">`,
+                `<option value=""${intransitAddressFilter === '' ? ' selected' : ''}>全部</option>`,
+                ...provinces.map(p => `<option value="${escapeHtml(p)}"${intransitAddressFilter === p ? ' selected' : ''}>${escapeHtml(p)}</option>`),
+                '</select></div></th>',
+                '<th>收货人</th>', '<th>要求到货时间</th>', '<th>重量(吨)</th>',
+                '</tr></thead><tbody>'
+            ];
 
-            orders.forEach(o => {
+            const rows = orders.map(o => {
                 const statusBadgeClass = getIntransitStatusBadge(o.status);
-                html += '<tr>';
-                html += `<td class="font-mono text-xs">${escapeHtml(o.order_no)}</td>`;
-                html += `<td>${escapeHtml(o.driver_name) || '-'}</td>`;
-                html += `<td>${escapeHtml(o.customer_name) || '-'}</td>`;
-                html += `<td>${escapeHtml(o.salesman) || '-'}</td>`;
-                html += `<td><span class="badge ${statusBadgeClass}">${escapeHtml(o.status) || '-'}</span></td>`;
-                html += `<td class="text-xs text-slate-500">${escapeHtml(o.created_date) || '-'}</td>`;
-                html += `<td class="text-xs max-w-[200px] truncate" title="${escapeHtml(o.receive_address)}">${escapeHtml(o.receive_address) || '-'}</td>`;
-                html += `<td>${escapeHtml(o.receiver) || '-'}</td>`;
-                html += `<td class="text-xs">${escapeHtml(o.delivery_date) || '-'}</td>`;
-                html += `<td class="font-medium">${formatWeight(o.weight)}</td>`;
-                html += '</tr>';
+                return `<tr>
+                    <td class="font-mono text-xs">${escapeHtml(o.order_no)}</td>
+                    <td>${escapeHtml(o.driver_name) || '-'}</td>
+                    <td>${escapeHtml(o.customer_name) || '-'}</td>
+                    <td>${escapeHtml(o.salesman) || '-'}</td>
+                    <td><span class="badge ${statusBadgeClass}">${escapeHtml(o.status) || '-'}</span></td>
+                    <td class="text-xs text-slate-500">${escapeHtml(o.created_date) || '-'}</td>
+                    <td class="text-xs max-w-[200px] truncate" title="${escapeHtml(o.receive_address)}">${escapeHtml(o.receive_address) || '-'}</td>
+                    <td>${escapeHtml(o.receiver) || '-'}</td>
+                    <td class="text-xs">${escapeHtml(o.delivery_date) || '-'}</td>
+                    <td class="font-medium">${formatWeight(o.weight)}</td>
+                </tr>`;
             });
 
-            html += '</tbody></table></div>';
-            content.innerHTML = html;
+            content.innerHTML = headerParts.join('') + rows.join('') + '</tbody></table></div>';
         }
 
         function getIntransitStatusBadge(status) {
             if (status && status.includes('已发车')) return 'badge-warning';
-            if (status && status.includes('已配载')) return 'badge-info';
-            return 'badge-info';
+            if (status && status.includes('已签收')) return 'badge-success';
+            return '';
         }
 
         function escapeHtml(str) {
             if (!str && str !== 0) return '';
-            const div = document.createElement('div');
-            div.textContent = String(str);
-            return div.innerHTML;
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                              .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
         function printQualityCheck(transportOrderNo) {
@@ -2727,17 +2655,27 @@
             if (e.target === this) closeSearchModal();
         });
 
-        // 在途订单弹窗点击外部关闭
-        document.getElementById('intransitOrdersModal').addEventListener('click', function(e) {
-            if (e.target === this) closeIntransitOrdersModal();
+        // 在途订单弹窗按 ESC 关闭
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && document.getElementById('intransitOrdersModal').style.display === 'flex') {
+                closeIntransitOrdersModal();
+            }
         });
 
         // ==================== 重点订单跟进 ====================
         const TRACKED_ORDERS_KEY = 'tracked_orders';
+        let _trackedOrdersCache = null;
+        let _trackedOrdersCacheTime = 0;
 
         function getTrackedOrders() {
-            try { return JSON.parse(localStorage.getItem(TRACKED_ORDERS_KEY) || '[]'); }
-            catch (e) { return []; }
+            const now = Date.now();
+            if (_trackedOrdersCache !== null && now - _trackedOrdersCacheTime < 500) {
+                return _trackedOrdersCache;
+            }
+            try { _trackedOrdersCache = JSON.parse(localStorage.getItem(TRACKED_ORDERS_KEY) || '[]'); }
+            catch (e) { _trackedOrdersCache = []; }
+            _trackedOrdersCacheTime = now;
+            return _trackedOrdersCache;
         }
 
         function saveTrackedOrders(orders) {
@@ -3382,13 +3320,15 @@
 
         async function loadAnalysisNetworks() {
             try {
-                const resp = await fetch('/api/networks');
-                const data = await resp.json();
-                if (data.success) {
-                    const select = document.getElementById('analysisNetwork');
-                    select.innerHTML = '<option value="">全部网点</option>' + 
-                        (data.all || []).map(n => `<option value="${n}">${n}</option>`).join('');
+                let networks = allNetworks;
+                if (!networks || networks.length === 0) {
+                    const resp = await fetch('/api/networks');
+                    const data = await resp.json();
+                    if (data.success) networks = data.all || [];
                 }
+                const select = document.getElementById('analysisNetwork');
+                select.innerHTML = '<option value="">全部网点</option>' + 
+                    networks.map(n => `<option value="${n}">${n}</option>`).join('');
             } catch (e) { console.error('加载网点失败', e); }
         }
 

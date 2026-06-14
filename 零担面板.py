@@ -97,12 +97,31 @@ def _sess():
     return _session_local.s
 
 
+# ====================== Token缓存 ======================
+_token_cache = {"token": None, "expire_time": 0}
+_token_lock = threading.Lock()
+
+def get_token():
+    """获取缓存的token，未过期直接复用"""
+    with _token_lock:
+        now = time.time()
+        if _token_cache["token"] and now < _token_cache["expire_time"]:
+            return _token_cache["token"]
+        token = login()
+        if token:
+            _token_cache["token"] = token
+            _token_cache["expire_time"] = now + 1800
+        return token
+
+
+# ====================== RSA公钥预计算 ======================
+_RSA_KEY = RSA.importKey(f"-----BEGIN PUBLIC KEY-----\n{PUBLIC_KEY}\n-----END PUBLIC KEY-----")
+_RSA_CIPHER = PKCS1_v1_5.new(_RSA_KEY)
+
+
 # ====================== 工具函数 ======================
 def rsa_encrypt(password):
-    pub_key = f"-----BEGIN PUBLIC KEY-----\n{PUBLIC_KEY}\n-----END PUBLIC KEY-----"
-    rsa_key = RSA.importKey(pub_key)
-    cipher = PKCS1_v1_5.new(rsa_key)
-    encrypted = cipher.encrypt(password.encode())
+    encrypted = _RSA_CIPHER.encrypt(password.encode())
     return base64.b64encode(encrypted).decode()
 
 
@@ -172,17 +191,20 @@ def format_time(time_str):
         return time_str
 
 
+_PROVINCE_LIST = ["河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北",
+                  "湖南", "广东", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "内蒙古", "广西", "西藏", "宁夏",
+                  "新疆", "北京", "上海", "天津", "重庆"]
+_PROVINCE_SET = frozenset(_PROVINCE_LIST)
+_PROVINCE_RE = re.compile('(' + '|'.join(sorted(_PROVINCE_LIST, key=len, reverse=True)) + ')')
+
+
 def extract_province(city_str):
     if not city_str:
         return "未知"
     if "省" in city_str:
         return city_str.split("省")[0] + "省"
-    for p in ["河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北",
-              "湖南", "广东", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "内蒙古", "广西", "西藏", "宁夏",
-              "新疆"]:
-        if p in city_str:
-            return p
-    return city_str[:6] if len(city_str) > 6 else city_str
+    m = _PROVINCE_RE.search(city_str)
+    return m.group(1) if m else (city_str[:6] if len(city_str) > 6 else city_str)
 
 
 # ====================== 数据获取函数 ======================
@@ -203,7 +225,7 @@ def query_orders(token, region):
                 {"field": "receive_region_code_show", "option": "LIKE_ANYWHERE", "values": [region]},
                 {"field": "status_dk_show", "option": "EQ", "values": ["待配载"]}
             ],
-            "size": 9999999,
+            "size": 5000,
             "sorts": [
                 {"property": "required_arrival_date", "direction": "ASC"},
                 {"property": "receive_region_code", "direction": "ASC"}
@@ -486,7 +508,7 @@ def query_orders_by_sender_region(token, region):
                 {"field": "send_region_code_show", "option": "LIKE_ANYWHERE", "values": [region]},
                 {"field": "status_dk_show", "option": "EQ", "values": ["待配载"]}
             ],
-            "size": 9999999,
+            "size": 5000,
             "sorts": [
                 {"property": "order_date", "direction": "DESC"}
             ],
@@ -638,7 +660,6 @@ def get_intransit_today_count(token):
     payload = {
         "debugFlag": False,
         "developmentSystemId": None,
-        "direction": "DESC",
         "dynamicFormCode": "stowage_sign_receipt",
         "fromClientType": "pc",
         "number": 0,
@@ -653,6 +674,9 @@ def get_intransit_today_count(token):
     }
     try:
         resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            print(f"查询在途订单数量失败: HTTP {resp.status_code}")
+            return 0
         orders = resp.json().get("content", [])
         return len(orders)
     except Exception as e:
@@ -675,11 +699,10 @@ def get_all_intransit_orders(token, network_names):
     payload = {
         "debugFlag": False,
         "developmentSystemId": None,
-        "direction": "ASC",
         "dynamicFormCode": "stowage_sign_receipt",
         "fromClientType": "pc",
         "number": 0,
-        "property": "delivery_date",
+        "property": "id",
         "rules": [
             {"field": "status_dk", "option": "IN", "values": ["WAITDELIVER", "DEPARTRUECONFIR"]},
             {"field": "k_contract_line_a.network", "option": "IN", "values": network_ids}
@@ -690,6 +713,9 @@ def get_all_intransit_orders(token, network_names):
     }
     try:
         resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            print(f"查询所有在途订单失败: HTTP {resp.status_code}")
+            return {"orders": [], "total_count": 0, "statuses": []}
         orders = resp.json().get("content", [])
     except Exception as e:
         print(f"查询所有在途订单失败: {e}")
@@ -1069,7 +1095,7 @@ def refresh_all_data():
         print(f"[{datetime.now()}] 开始刷新数据... (省份: {AUTO_REGIONS} | 网点: {SELECTED_NETWORKS})")
 
         t_login_start = perf_counter()
-        token = login()
+        token = get_token()
         print(f"  [计时] 登录耗时: {perf_counter() - t_login_start:.2f}s")
         if not token:
             print("登录失败，跳过本次刷新")
@@ -1101,6 +1127,8 @@ def refresh_all_data():
                 results["auto_monitor"] = {"regions": [], "total_count": 0, "total_weight": 0}
                 results["region_stats"] = {}
 
+            # 各 key 的默认回退值（非 dict 类型需明确指定）
+            KEY_FALLBACKS = {"intransit_today_count": 0}
             for future, key in [
                 (future_today_unsigned, "today_unsigned"),
                 (future_tomorrow_unsigned, "tomorrow_unsigned"),
@@ -1116,7 +1144,7 @@ def refresh_all_data():
                     print(f"  [计时] {key}: {perf_counter() - t2:.2f}s")
                 except Exception as e:
                     print(f"查询 {key} 失败: {e}")
-                    results[key] = {}
+                    results[key] = KEY_FALLBACKS.get(key, {})
 
         with cache_lock:
             cache_data.update(results)
@@ -1134,7 +1162,7 @@ def refresh_pending_orders():
     """仅刷新待配载订单相关数据 - 使用并行查询优化"""
     global cache_data
     print(f"[{datetime.now()}] 开始刷新待配载订单数据...")
-    token = login()
+    token = get_token()
     if not token:
         print("登录失败，跳过本次刷新")
         return False
@@ -1161,7 +1189,7 @@ def refresh_pending_orders():
                     results[key] = future.result()
                 except Exception as e:
                     print(f"查询 {key} 失败: {e}")
-                    results[key] = {}
+                    results[key] = KEY_FALLBACKS.get(key, {})
 
         with cache_lock:
             cache_data.update(results)
@@ -1182,30 +1210,41 @@ def background_refresh():
         time.sleep(300)
 
 
+# ====================== 首页HTML缓存 ======================
+_index_html = None
+
+
 # ====================== API路由 ======================
 @app.route('/')
 def index():
-    index_path = os.path.join(BASE_DIR, 'index.html')
-    with open(index_path, 'r', encoding='utf-8') as f:
-        return f.read()
+    global _index_html
+    if _index_html is None:
+        with open(os.path.join(BASE_DIR, 'index.html'), 'r', encoding='utf-8') as f:
+            _index_html = f.read()
+    return _index_html
 
 
 @app.route('/api/dashboard')
 def get_dashboard():
     with cache_lock:
-        resp = jsonify({
-            "success": True,
-            "data": cache_data,
-            "selected_provinces": AUTO_REGIONS,
-            "all_provinces": ALL_PROVINCES,
-            "selected_networks": SELECTED_NETWORKS,
-            "all_networks": list(ALL_NETWORKS.keys()),
-            "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        resp.headers['Pragma'] = 'no-cache'
-        resp.headers['Expires'] = '0'
-        return resp
+        snapshot = dict(cache_data)
+        selected_provinces = AUTO_REGIONS
+        all_provinces = ALL_PROVINCES
+        selected_networks = SELECTED_NETWORKS
+        all_network_keys = list(ALL_NETWORKS.keys())
+    resp = jsonify({
+        "success": True,
+        "data": snapshot,
+        "selected_provinces": selected_provinces,
+        "all_provinces": all_provinces,
+        "selected_networks": selected_networks,
+        "all_networks": all_network_keys,
+        "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
 
 
 @app.route('/api/refresh', methods=['POST'])
@@ -1311,7 +1350,7 @@ def get_kpi_penalty():
 def _login_and_refresh(refresh_funcs):
     """通用刷新辅助函数：登录并执行指定的数据获取函数"""
     global cache_data
-    token = login()
+    token = get_token()
     if not token:
         return {"success": False, "message": "登录失败"}
     try:
@@ -1324,7 +1363,7 @@ def _login_and_refresh(refresh_funcs):
                     results[key] = future.result()
                 except Exception as e:
                     print(f"刷新 {key} 失败: {e}")
-                    results[key] = {}
+                    results[key] = 0 if key == "intransit_today_count" else {}
         with cache_lock:
             cache_data.update(results)
             cache_data["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1349,7 +1388,7 @@ def refresh_overview():
 def refresh_pending_detail():
     """单独刷新待配载订单 + 分省统计（使用统一查询优化）"""
     global cache_data
-    token = login()
+    token = get_token()
     if not token:
         return jsonify({"success": False, "message": "登录失败"})
     try:
@@ -1403,9 +1442,9 @@ def refresh_today_orders():
 @app.route('/api/intransit-count')
 def get_intransit_count():
     """获取在途订单数量（从缓存读取）"""
+    networks = list(SELECTED_NETWORKS)
     with cache_lock:
         count = cache_data.get("intransit_today_count", 0)
-        networks = list(SELECTED_NETWORKS)
     return jsonify({
         "success": True,
         "count": count,
@@ -1422,7 +1461,7 @@ def get_intransit_orders():
     else:
         network_names = list(SELECTED_NETWORKS)
 
-    token = login()
+    token = get_token()
     if not token:
         return jsonify({"success": False, "message": "登录失败"})
 
@@ -1440,7 +1479,7 @@ def get_tracked_orders():
     order_nos = data.get('order_nos', [])
     if not order_nos:
         return jsonify({"success": False, "message": "请提供订单号列表"})
-    token = login()
+    token = get_token()
     if not token:
         return jsonify({"success": False, "message": "登录失败"})
 
@@ -1758,7 +1797,7 @@ EXPORT_SORT_FIELDS = [
 ]
 
 
-def query_stowage_orders(token, rules, size=9999):
+def query_stowage_orders(token, rules, size=5000):
     """查询配载单数据"""
     try:
         headers = {
@@ -1794,12 +1833,7 @@ def parse_stowage_order(order):
         if len(parts) >= 2:
             province = parts[1]
     elif receive_region:
-        for p in ["河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西",
-                  "山东", "河南", "湖北", "湖南", "广东", "海南", "四川", "贵州", "云南", "陕西",
-                  "甘肃", "青海", "内蒙古", "广西", "西藏", "宁夏", "新疆", "北京", "上海", "天津", "重庆"]:
-            if p in receive_region:
-                province = p
-                break
+        province = extract_province(receive_region)
     
     return {
         "id": order.get("id"),
@@ -1842,7 +1876,7 @@ def api_order_analysis_query():
     """订单分析-查询"""
     try:
         data = request.get_json(silent=True) or {}
-        token = login()
+        token = get_token()
         if not token:
             return jsonify({"success": False, "message": "登录失败"})
         
@@ -1997,7 +2031,7 @@ def api_order_analysis_export():
     """订单分析-导出"""
     try:
         data = request.get_json(silent=True) or {}
-        token = login()
+        token = get_token()
         if not token:
             return jsonify({"success": False, "message": "登录失败"})
         
@@ -2017,7 +2051,7 @@ def api_order_analysis_export():
             "number": 0,
             "sorts": [],
             "rules": rules,
-            "size": 9999,
+            "size": 5000,
             "specialConditions": [],
             "dynamicFormCode": "stowage_sign_receipt",
             "developmentSystemId": None,
@@ -2036,8 +2070,8 @@ def api_order_analysis_export():
         
         # 轮询等待完成
         queued_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/queued-task/my/{task_id}"
-        for _ in range(40):
-            time.sleep(3)
+        for i in range(30):
+            time.sleep(2 if i < 3 else 3)
             poll_resp = _sess().get(queued_url, headers=headers, timeout=15)
             if poll_resp.status_code == 200:
                 task_data = poll_resp.json()
