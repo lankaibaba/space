@@ -1913,7 +1913,7 @@ def api_order_analysis_analyze():
         # 按日期统计
         date_stats = {}
         for o in orders:
-            d = (o.get("delivery_date") or "")[:10]
+            d = (o.get("created_date") or "")[:10]
             if not d:
                 d = "未知"
             if d not in date_stats:
@@ -1956,10 +1956,10 @@ def api_order_analysis_analyze():
         by_logistics = [{"logistics": k, "count": v["count"], "weight": round(v["weight"], 2)}
                         for k, v in sorted(logistics_stats.items(), key=lambda x: x[1]["count"], reverse=True)]
         
-        # 每日+省份堆叠数据
+        # 每日+省份堆叠数据（按创建时间统计）
         daily_province = {}
         for o in orders:
-            d = (o.get("delivery_date") or "")[:10]
+            d = (o.get("created_date") or "")[:10]
             p = o.get("province", "未知")
             if d not in daily_province:
                 daily_province[d] = {}

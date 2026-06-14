@@ -105,6 +105,11 @@
         .table-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
         .table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .table-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .delivery-orders-scroll { max-height: 600px; overflow-y: auto; overflow-x: hidden; }
+        .delivery-orders-scroll::-webkit-scrollbar { width: 6px; }
+        .delivery-orders-scroll::-webkit-scrollbar-track { background: transparent; }
+        .delivery-orders-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .delivery-orders-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         .config-panel {
             border-radius: 12px;
             overflow: hidden;
@@ -903,7 +908,7 @@
                 <div class="filter-group mb-4 flex flex-wrap gap-2" id="deliveryPanelFilter">
                     <button class="filter-btn active" data-province="">全部</button>
                 </div>
-                <div id="deliveryPanelOrders">
+                <div id="deliveryPanelOrders" class="delivery-orders-scroll">
                     <div class="text-center py-12 text-slate-400">加载中...</div>
                 </div>
             </div>
@@ -922,7 +927,7 @@
                 <div class="filter-group mb-4 flex flex-wrap gap-2" id="tomorrowFilter">
                     <button class="filter-btn active" data-province="">全部</button>
                 </div>
-                <div id="tomorrowOrders">
+                <div id="tomorrowOrders" class="delivery-orders-scroll">
                     <div class="text-center py-12 text-slate-400">加载中...</div>
                 </div>
             </div>
@@ -1021,7 +1026,7 @@
             </div>
             <div class="grid grid-cols-2 gap-4 mb-4">
                 <div class="bg-slate-50 rounded-xl p-4">
-                    <h3 class="text-sm font-semibold text-slate-700 mb-3">每日货量趋势（按省份堆叠）</h3>
+                    <h3 class="text-sm font-semibold text-slate-700 mb-3">每日货量趋势（按创建时间）</h3>
                     <div style="height: 280px;"><canvas id="analysisDailyChart"></canvas></div>
                 </div>
                 <div class="bg-slate-50 rounded-xl p-4">
@@ -1036,8 +1041,10 @@
                     <table class="data-table w-full">
                         <thead class="sticky top-0">
                             <tr>
-                                <th>来源单号</th><th>配载单号</th><th>收货方</th><th>省份</th><th>网点</th>
-                                <th>司机</th><th>车牌</th><th>创建时间</th><th>要求到货</th><th>重量(kg)</th>
+                                <th>来源单号</th><th>配载单号</th><th>收货方</th>
+                                <th><div class="flex flex-col gap-1"><span>省份</span><select id="filterProvince" class="text-xs px-1 py-0.5 border border-slate-300 rounded bg-white" onchange="filterAnalysisTable()"><option value="">全部</option></select></div></th>
+                                <th><div class="flex flex-col gap-1"><span>网点</span><select id="filterNetwork" class="text-xs px-1 py-0.5 border border-slate-300 rounded bg-white" onchange="filterAnalysisTable()"><option value="">全部</option></select></div></th>
+                                <th>司机</th><th>车牌</th><th>创建时间</th><th>要求到货</th><th>重量(吨)</th>
                                 <th>状态</th><th>物流时效</th>
                             </tr>
                         </thead>
@@ -3385,21 +3392,43 @@
             } catch (e) { console.error('加载网点失败', e); }
         }
 
+        function setBtnLoading(btnId, loading, loadingText, originalText) {
+            const btn = document.getElementById(btnId);
+            if (loading) {
+                btn.disabled = true;
+                btn.dataset.originalClasses = btn.className;
+                btn.dataset.originalText = btn.querySelector('.btn-text').textContent;
+                const originalSvg = btn.querySelector('svg');
+                if (originalSvg) originalSvg.style.display = 'none';
+                const spinner = document.createElement('svg');
+                spinner.classList.add('animate-spin');
+                spinner.setAttribute('viewBox', '0 0 24 24');
+                spinner.setAttribute('width', '16');
+                spinner.setAttribute('height', '16');
+                spinner.setAttribute('fill', 'none');
+                spinner.innerHTML = '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>';
+                btn.querySelector('.btn-text').before(spinner);
+                btn.querySelector('.btn-text').textContent = loadingText;
+            } else {
+                btn.disabled = false;
+                const spinner = btn.querySelector('svg.animate-spin');
+                if (spinner) spinner.remove();
+                const originalSvg = btn.querySelector('svg:not(.animate-spin)');
+                if (originalSvg) originalSvg.style.display = '';
+                btn.querySelector('.btn-text').textContent = btn.dataset.originalText || originalText;
+                if (btn.dataset.originalClasses) btn.className = btn.dataset.originalClasses;
+            }
+        }
+
         function showAnalysisStatus(text) {
             document.getElementById('analysisStatus').classList.remove('hidden');
             document.getElementById('analysisStatus').classList.add('flex');
             document.getElementById('analysisStatusText').textContent = text;
-            document.getElementById('analysisQueryBtn').disabled = true;
-            document.getElementById('analysisAnalyzeBtn').disabled = true;
-            document.getElementById('analysisExportBtn').disabled = true;
         }
 
         function hideAnalysisStatus() {
             document.getElementById('analysisStatus').classList.add('hidden');
             document.getElementById('analysisStatus').classList.remove('flex');
-            document.getElementById('analysisQueryBtn').disabled = false;
-            document.getElementById('analysisAnalyzeBtn').disabled = false;
-            document.getElementById('analysisExportBtn').disabled = false;
         }
 
         async function analysisQuery() {
@@ -3414,7 +3443,7 @@
                 status: document.getElementById('analysisStatus').value
             };
             
-            showAnalysisStatus('查询中...');
+            setBtnLoading('analysisQueryBtn', true, '查询中...');
             document.getElementById('analysisTableBody').innerHTML = '<tr><td colspan="12" class="text-center py-8 text-slate-400">加载中...</td></tr>';
             
             try {
@@ -3440,20 +3469,19 @@
                     analysisData = orders;
                     renderAnalysisSummary({success: true, data: orders, total: orders.length, total_weight: orders.reduce((s,o) => s + (o.stowage_weight||0), 0)});
                     renderAnalysisTable(orders);
-                    showAnalysisStatus('查询完成 ✓');
+                    setBtnLoading('analysisQueryBtn', false, '', '查询');
                 } else {
-                    showAnalysisStatus('查询失败');
+                    setBtnLoading('analysisQueryBtn', false, '', '查询');
                 }
             } catch (e) {
-                showAnalysisStatus('请求异常');
+                setBtnLoading('analysisQueryBtn', false, '', '查询');
             }
-            setTimeout(hideAnalysisStatus, 1500);
         }
 
         function renderAnalysisSummary(result) {
             const total = result.total || 0;
             const totalWeight = result.total_weight || 0;
-            const avgWeight = total > 0 ? Math.round(totalWeight / total) : 0;
+            const avgWeight = total > 0 ? (totalWeight / total / 1000).toFixed(1) : '0.0';
             const signed = analysisData.filter(o => o.status === '已签收' || o.status === '已回单确认').length;
             const onTime = analysisData.filter(o => o.logistics_time === '准时').length;
             const onTimeRate = signed > 0 ? Math.round(onTime / signed * 100) : 0;
@@ -3461,7 +3489,7 @@
             const cards = [
                 { label: '订单总数', value: total.toLocaleString(), sub: '单', color: 'blue' },
                 { label: '总重量', value: (totalWeight / 1000).toFixed(1), sub: '吨', color: 'emerald' },
-                { label: '平均重量', value: avgWeight.toLocaleString(), sub: 'kg/单', color: 'amber' },
+                { label: '平均重量', value: avgWeight.toLocaleString(), sub: '吨/单', color: 'amber' },
                 { label: '准时率', value: onTimeRate, sub: '%', color: 'purple' }
             ];
             
@@ -3473,14 +3501,33 @@
             `).join('');
         }
 
-        function renderAnalysisTable(orders) {
+        function populateAnalysisFilters(orders) {
+            const provinces = [...new Set(orders.map(o => o.province).filter(Boolean))].sort();
+            const networks = [...new Set(orders.map(o => o.network).filter(Boolean))].sort();
+            const provinceSelect = document.getElementById('filterProvince');
+            const networkSelect = document.getElementById('filterNetwork');
+            const pVal = provinceSelect.value;
+            const nVal = networkSelect.value;
+            provinceSelect.innerHTML = '<option value="">全部</option>' + provinces.map(p => `<option value="${p}"${p === pVal ? ' selected' : ''}>${p}</option>`).join('');
+            networkSelect.innerHTML = '<option value="">全部</option>' + networks.map(n => `<option value="${n}"${n === nVal ? ' selected' : ''}>${n}</option>`).join('');
+        }
+
+        function filterAnalysisTable() {
+            const province = document.getElementById('filterProvince').value;
+            const network = document.getElementById('filterNetwork').value;
+            let filtered = analysisData;
+            if (province) filtered = filtered.filter(o => o.province === province);
+            if (network) filtered = filtered.filter(o => o.network === network);
+            renderAnalysisTableBody(filtered);
+            document.getElementById('analysisCount').textContent = `共 ${filtered.length} 条记录 / 总重 ${(filtered.reduce((s,o) => s + (o.stowage_weight||0), 0) / 1000).toFixed(1)} 吨`;
+        }
+
+        function renderAnalysisTableBody(orders) {
             const tbody = document.getElementById('analysisTableBody');
             if (!orders || orders.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="12" class="text-center py-8 text-slate-400">暂无数据</td></tr>';
-                document.getElementById('analysisCount').textContent = '';
                 return;
             }
-            
             tbody.innerHTML = orders.map(o => `<tr>
                 <td class="font-mono text-xs">${o.source_order_no || '-'}</td>
                 <td class="font-mono text-xs">${o.stowage_no || '-'}</td>
@@ -3491,12 +3538,18 @@
                 <td>${o.plate_no || '-'}</td>
                 <td>${o.created_date || '-'}</td>
                 <td>${o.delivery_date || '-'}</td>
-                <td class="text-right">${o.stowage_weight.toLocaleString()}</td>
+                <td class="text-right">${(o.stowage_weight / 1000).toFixed(2)}</td>
                 <td><span class="badge ${getStatusBadgeClass(o.status)}">${o.status || '-'}</span></td>
                 <td>${o.logistics_time || '-'}</td>
             </tr>`).join('');
-            
-            document.getElementById('analysisCount').textContent = `共 ${orders.length} 条记录 / 总重 ${orders.reduce((s,o) => s + (o.stowage_weight||0), 0).toLocaleString()} kg`;
+        }
+
+        function renderAnalysisTable(orders) {
+            renderAnalysisTableBody(orders);
+            populateAnalysisFilters(orders);
+            document.getElementById('analysisCount').textContent = orders.length > 0
+                ? `共 ${orders.length} 条记录 / 总重 ${(orders.reduce((s,o) => s + (o.stowage_weight||0), 0) / 1000).toFixed(1)} 吨`
+                : '';
         }
 
         function getStatusBadgeClass(status) {
@@ -3513,7 +3566,7 @@
                 return;
             }
             
-            showAnalysisStatus('分析中...');
+            setBtnLoading('analysisAnalyzeBtn', true, '分析中...');
             
             try {
                 const resp = await fetch('/api/order-analysis/analyze', {
@@ -3525,14 +3578,13 @@
                 
                 if (result.success) {
                     renderAnalysisCharts(result.data);
-                    showAnalysisStatus('分析完成 ✓');
+                    setBtnLoading('analysisAnalyzeBtn', false, '', '分析');
                 } else {
-                    showAnalysisStatus('分析失败');
+                    setBtnLoading('analysisAnalyzeBtn', false, '', '分析');
                 }
             } catch (e) {
-                showAnalysisStatus('分析异常');
+                setBtnLoading('analysisAnalyzeBtn', false, '', '分析');
             }
-            setTimeout(hideAnalysisStatus, 1500);
         }
 
         function renderAnalysisCharts(data) {
@@ -3584,7 +3636,7 @@
                         backgroundColor: dailyColors[i % dailyColors.length]
                     }))
                 },
-                options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }, plugins: { tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + ctx.raw + ' 吨'; } } } } }
             });
             
             // 网点饼图
@@ -3608,7 +3660,7 @@
                 return;
             }
             
-            showAnalysisStatus('导出中...');
+            setBtnLoading('analysisExportBtn', true, '导出中...');
             
             try {
                 const resp = await fetch('/api/order-analysis/export', {
@@ -3619,14 +3671,13 @@
                 const result = await resp.json();
                 
                 if (result.success) {
-                    showAnalysisStatus('导出完成 ✓');
+                    setBtnLoading('analysisExportBtn', false, '', '导出');
                 } else {
-                    showAnalysisStatus('导出失败: ' + (result.message || ''));
+                    setBtnLoading('analysisExportBtn', false, '', '导出');
                 }
             } catch (e) {
-                showAnalysisStatus('导出异常');
+                setBtnLoading('analysisExportBtn', false, '', '导出');
             }
-            setTimeout(hideAnalysisStatus, 2000);
         }
 
         // 初始化时加载网点
