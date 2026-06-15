@@ -1893,11 +1893,11 @@ def api_order_analysis_query():
         if created_start and created_end:
             rules.append({"field": "created_date", "option": "BTS", "values": [created_start, created_end]})
         
-        # 要求到货时间范围
-        delivery_start = data.get('delivery_start')
-        delivery_end = data.get('delivery_end')
-        if delivery_start and delivery_end:
-            rules.append({"field": "delivery_date", "option": "BTS", "values": [delivery_start, delivery_end]})
+        # 签收日期范围
+        sign_start = data.get('sign_start')
+        sign_end = data.get('sign_end')
+        if sign_start and sign_end:
+            rules.append({"field": "receive_time", "option": "BTS", "values": [sign_start, sign_end]})
         
         # 物流时效 - 注意：物流时效字段不支持API直接筛选，需要前端过滤
         

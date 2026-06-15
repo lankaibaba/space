@@ -961,12 +961,12 @@
                         <input type="date" id="analysisCreatedEnd" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-xs text-slate-500">要求到货-开始</label>
-                        <input type="date" id="analysisDeliveryStart" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        <label class="text-xs text-slate-500">签收日期-开始</label>
+                        <input type="date" id="analysisSignStart" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-xs text-slate-500">要求到货-结束</label>
-                        <input type="date" id="analysisDeliveryEnd" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        <label class="text-xs text-slate-500">签收日期-结束</label>
+                        <input type="date" id="analysisSignEnd" class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
                     </div>
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-slate-500">物流时效</label>
@@ -1043,7 +1043,7 @@
                                 <th>来源单号</th><th>配载单号</th><th>收货方</th>
                                 <th><div class="flex flex-col gap-1"><span>省份</span><select id="filterProvince" class="text-xs px-1 py-0.5 border border-slate-300 rounded bg-white" onchange="filterAnalysisTable()"><option value="">全部</option></select></div></th>
                                 <th><div class="flex flex-col gap-1"><span>网点</span><select id="filterNetwork" class="text-xs px-1 py-0.5 border border-slate-300 rounded bg-white" onchange="filterAnalysisTable()"><option value="">全部</option></select></div></th>
-                                <th>司机</th><th>车牌</th><th>创建时间</th><th>要求到货</th><th>重量(吨)</th>
+                                <th>司机</th><th>车牌</th><th>创建时间</th><th>签收日期</th><th>重量(吨)</th>
                                 <th>状态</th><th>物流时效</th>
                             </tr>
                         </thead>
@@ -3378,8 +3378,8 @@
                 network: document.getElementById('analysisNetwork').value,
                 created_start: document.getElementById('analysisCreatedStart').value ? document.getElementById('analysisCreatedStart').value + 'T00:00:00.000Z' : null,
                 created_end: document.getElementById('analysisCreatedEnd').value ? document.getElementById('analysisCreatedEnd').value + 'T23:59:59.999Z' : null,
-                delivery_start: document.getElementById('analysisDeliveryStart').value ? document.getElementById('analysisDeliveryStart').value + 'T00:00:00.000Z' : null,
-                delivery_end: document.getElementById('analysisDeliveryEnd').value ? document.getElementById('analysisDeliveryEnd').value + 'T23:59:59.999Z' : null,
+                sign_start: document.getElementById('analysisSignStart').value ? document.getElementById('analysisSignStart').value + 'T00:00:00.000Z' : null,
+                sign_end: document.getElementById('analysisSignEnd').value ? document.getElementById('analysisSignEnd').value + 'T23:59:59.999Z' : null,
                 status: document.getElementById('analysisStatus').value
             };
             
@@ -3477,7 +3477,7 @@
                 <td>${o.carrier_name || '-'}</td>
                 <td>${o.plate_no || '-'}</td>
                 <td>${o.created_date || '-'}</td>
-                <td>${o.delivery_date || '-'}</td>
+                <td>${o.receive_time || '-'}</td>
                 <td class="text-right">${(o.stowage_weight / 1000).toFixed(2)}</td>
                 <td><span class="badge ${getStatusBadgeClass(o.status)}">${o.status || '-'}</span></td>
                 <td>${o.logistics_time || '-'}</td>
