@@ -1189,7 +1189,7 @@ def refresh_pending_orders():
                     results[key] = future.result()
                 except Exception as e:
                     print(f"查询 {key} 失败: {e}")
-                    results[key] = KEY_FALLBACKS.get(key, {})
+                    results[key] = {}
 
         with cache_lock:
             cache_data.update(results)
@@ -1879,39 +1879,62 @@ def api_order_analysis_query():
         token = get_token()
         if not token:
             return jsonify({"success": False, "message": "登录失败"})
-        
+
         rules = []
-        
-        # 网点筛选
-        network = data.get('network')
-        if network and network in ALL_NETWORKS:
-            rules.append({"field": "k_contract_line_a.network", "option": "EQ", "values": [ALL_NETWORKS[network]]})
-        
-        # 创建时间范围
+
+        # 网点筛选（多选）
+        networks = data.get('networks')
+        if networks and isinstance(networks, list) and len(networks) > 0:
+            network_ids = [ALL_NETWORKS[n] for n in networks if n in ALL_NETWORKS]
+            if network_ids:
+                rules.append({"field": "k_contract_line_a.network", "option": "IN", "values": network_ids})
+
+        # 北京时间→UTC 转换辅助函数
+        def bj_date_to_utc(date_str, is_end=False):
+            """将前端日期字符串（北京时间）转为UTC时间戳，与项目统一模式一致"""
+            date_part = date_str[:10]
+            dt = datetime.strptime(date_part, '%Y-%m-%d')
+            if is_end:
+                bj_utc = datetime(dt.year, dt.month, dt.day, 23, 59, 59) - timedelta(hours=8)
+                return bj_utc.strftime('%Y-%m-%dT%H:%M:%S.999Z')
+            else:
+                bj_utc = datetime(dt.year, dt.month, dt.day, 0, 0, 0) - timedelta(hours=8)
+                return bj_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
+        # 创建时间范围（来源单创建时间）
         created_start = data.get('created_start')
         created_end = data.get('created_end')
         if created_start and created_end:
-            rules.append({"field": "created_date", "option": "BTS", "values": [created_start, created_end]})
-        
+            rules.append({"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
+                bj_date_to_utc(created_start, is_end=False),
+                bj_date_to_utc(created_end, is_end=True)
+            ]})
+
         # 签收日期范围
         sign_start = data.get('sign_start')
         sign_end = data.get('sign_end')
         if sign_start and sign_end:
-            rules.append({"field": "receive_time", "option": "BTS", "values": [sign_start, sign_end]})
-        
+            rules.append({"field": "receive_time", "option": "BTS", "values": [
+                bj_date_to_utc(sign_start, is_end=False),
+                bj_date_to_utc(sign_end, is_end=True)
+            ]})
+
         # 物流时效 - 注意：物流时效字段不支持API直接筛选，需要前端过滤
-        
-        # 配载单状态
-        status = data.get('status')
-        if status and status != '全部':
+
+        # 配载单状态（多选）
+        statuses = data.get('statuses')
+        if statuses and isinstance(statuses, list) and len(statuses) > 0:
             status_map = {
-                "待配载": "TO_BE_STOWED", "已配载": "STOWED",
-                "已发车确认": "DEPARTED_CONFIRMED", "已签收": "SIGNED_IN",
-                "已回单确认": "RECEIPT_CONFIRMED"
+                "待配载": "WAITSTOWED",
+                "已配载": "WAITDELIVER",
+                "已发车确认": "DEPARTRUECONFIR",
+                "已签收": "SIGNEDIN",
+                "已回单确认": "RECEIPTCONFIR"
             }
-            if status in status_map:
-                rules.append({"field": "status_dk", "option": "EQ", "values": [status_map[status]]})
-        
+            status_vals = [status_map[s] for s in statuses if s in status_map]
+            if status_vals:
+                rules.append({"field": "status_dk", "option": "IN", "values": status_vals})
+
         orders_raw = query_stowage_orders(token, rules)
         orders = [parse_stowage_order(o) for o in orders_raw]
         
@@ -2028,14 +2051,56 @@ def api_order_analysis_analyze():
 
 @app.route('/api/order-analysis/export', methods=['POST'])
 def api_order_analysis_export():
-    """订单分析-导出"""
+    """订单分析-导出（使用前端筛选条件）"""
     try:
         data = request.get_json(silent=True) or {}
         token = get_token()
         if not token:
             return jsonify({"success": False, "message": "登录失败"})
-        
-        rules = data.get('rules', [])
+
+        # 构建API筛选规则
+        frontend_rules = data.get('rules', [])
+        api_rules = []
+        for rule in frontend_rules:
+            field = rule.get('field', '')
+            values = rule.get('values', [])
+            if field == 'network':
+                network_ids = [ALL_NETWORKS[n] for n in values if n in ALL_NETWORKS]
+                if network_ids:
+                    api_rules.append({"field": "k_contract_line_a.network", "option": "IN", "values": network_ids})
+            elif field == 'created':
+                if len(values) == 2:
+                    start = datetime.strptime(values[0], '%Y-%m-%d')
+                    end = datetime.strptime(values[1], '%Y-%m-%d')
+                    utc_start = datetime(start.year, start.month, start.day, 0, 0, 0) - timedelta(hours=8)
+                    utc_end = datetime(end.year, end.month, end.day, 23, 59, 59) - timedelta(hours=8)
+                    api_rules.append({"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
+                        utc_start.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+                        utc_end.strftime('%Y-%m-%dT%H:%M:%S.999Z')
+                    ]})
+            elif field == 'sign':
+                if len(values) == 2:
+                    start = datetime.strptime(values[0], '%Y-%m-%d')
+                    end = datetime.strptime(values[1], '%Y-%m-%d')
+                    utc_start = datetime(start.year, start.month, start.day, 0, 0, 0) - timedelta(hours=8)
+                    utc_end = datetime(end.year, end.month, end.day, 23, 59, 59) - timedelta(hours=8)
+                    api_rules.append({"field": "receive_time", "option": "BTS", "values": [
+                        utc_start.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+                        utc_end.strftime('%Y-%m-%dT%H:%M:%S.999Z')
+                    ]})
+            elif field == 'status':
+                status_map = {
+                    "待配载": "WAITSTOWED", "已配载": "WAITDELIVER",
+                    "已发车确认": "DEPARTRUECONFIR", "已签收": "SIGNEDIN",
+                    "已回单确认": "RECEIPTCONFIR"
+                }
+                status_vals = [status_map[s] for s in values if s in status_map]
+                if status_vals:
+                    api_rules.append({"field": "status_dk", "option": "IN", "values": status_vals})
+
+        file_name = data.get('file_name', '订单导出.xlsx')
+        # 保存前端传入的自定义文件名，避免被API返回的默认名覆盖
+        custom_name = file_name
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -2050,7 +2115,7 @@ def api_order_analysis_export():
             "fromClientType": "pc",
             "number": 0,
             "sorts": [],
-            "rules": rules,
+            "rules": api_rules,
             "size": 5000,
             "specialConditions": [],
             "dynamicFormCode": "stowage_sign_receipt",
@@ -2083,7 +2148,7 @@ def api_order_analysis_export():
                         attach_files = content.get("attachment", {}).get("attachFile", [])
                         if attach_files:
                             file_key = attach_files[0].get("key")
-                            file_name = attach_files[0].get("name", "export.xlsx")
+                            api_name = attach_files[0].get("name", "export.xlsx")
                             
                             # 获取授权码
                             auth_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/file/get-temporary-auth-code?key={file_key}"
@@ -2096,10 +2161,10 @@ def api_order_analysis_export():
                                 dl_resp = _sess().get(download_url, headers=headers, timeout=60)
                                 if dl_resp.status_code == 200:
                                     save_dir = os.path.dirname(os.path.abspath(__file__))
-                                    save_path = os.path.join(save_dir, file_name)
+                                    save_path = os.path.join(save_dir, custom_name)
                                     with open(save_path, "wb") as f:
                                         f.write(dl_resp.content)
-                                    return jsonify({"success": True, "filename": file_name, "path": save_path})
+                                    return jsonify({"success": True, "filename": custom_name, "path": save_path})
         
         return jsonify({"success": False, "message": "导出超时"})
     except Exception as e:
