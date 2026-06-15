@@ -304,6 +304,7 @@
         .multi-select-drop label { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; }
         .multi-select-drop label:hover { background: #f1f5f9; }
         .multi-select-drop input[type="checkbox"] { accent-color: #3b82f6; }
+        .multi-select-drop .select-all { border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 4px; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
@@ -983,6 +984,7 @@
                         <div class="multi-select" id="ms-logistics">
                             <div class="multi-select-btn" onclick="toggleMultiSelect('ms-logistics')">全部</div>
                             <div class="multi-select-drop" id="ms-logistics-drop">
+                                <label class="select-all"><input type="checkbox" value="" onchange="toggleSelectAll('ms-logistics', this.checked)"><span class="font-medium">全选</span></label>
                                 <label><input type="checkbox" value="准时" onchange="onMultiSelectChange('ms-logistics')"><span>准时</span></label>
                                 <label><input type="checkbox" value="延误" onchange="onMultiSelectChange('ms-logistics')"><span>延误</span></label>
                                 <label><input type="checkbox" value="未签收" onchange="onMultiSelectChange('ms-logistics')"><span>未签收</span></label>
@@ -994,6 +996,7 @@
                         <div class="multi-select" id="ms-status">
                             <div class="multi-select-btn" onclick="toggleMultiSelect('ms-status')">全部</div>
                             <div class="multi-select-drop" id="ms-status-drop">
+                                <label class="select-all"><input type="checkbox" value="" onchange="toggleSelectAll('ms-status', this.checked)"><span class="font-medium">全选</span></label>
                                 <label><input type="checkbox" value="待配载" onchange="onMultiSelectChange('ms-status')"><span>待配载</span></label>
                                 <label><input type="checkbox" value="已配载" onchange="onMultiSelectChange('ms-status')"><span>已配载</span></label>
                                 <label><input type="checkbox" value="已发车确认" onchange="onMultiSelectChange('ms-status')"><span>已发车确认</span></label>
@@ -1024,7 +1027,7 @@
             </div>
             
             <!-- 统计卡片 -->
-            <div class="grid grid-cols-4 gap-4 mb-4" id="analysisSummary"></div>
+            <div class="grid grid-cols-5 gap-4 mb-4" id="analysisSummary"></div>
             
             <!-- 图表区域 -->
             <div class="grid grid-cols-2 gap-4 mb-4">
@@ -3355,7 +3358,10 @@
             if (!drop) return;
             const opts = MULTI_SELECT_OPTIONS[id];
             const sel = multiSelectSelected[id];
-            drop.innerHTML = opts.map(o => `<label><input type="checkbox" value="${o}" ${sel.has(o) ? 'checked' : ''} onchange="onMultiSelectChange('${id}')"><span>${o}</span></label>`).join('');
+            const allChecked = sel.size === 0 || sel.size === opts.length;
+            drop.innerHTML = `<label class="select-all"><input type="checkbox" value="" ${allChecked ? 'checked' : ''} onchange="toggleSelectAll('${id}', this.checked)"><span class="font-medium">全选</span></label>` +
+                opts.map(o => `<label><input type="checkbox" value="${o}" ${sel.has(o) ? 'checked' : ''} onchange="onMultiSelectChange('${id}')"><span>${o}</span></label>`).join('');
+            updateSelectAllState(id);
             updateMultiSelectBtn(id);
         }
 
@@ -3372,11 +3378,34 @@
 
         function onMultiSelectChange(id) {
             const drop = document.getElementById(id + '-drop');
-            const checks = drop.querySelectorAll('input[type="checkbox"]');
+            const checks = drop.querySelectorAll('input[type="checkbox"]:not([value=\"\"])');
             const sel = new Set();
             checks.forEach(cb => { if (cb.checked) sel.add(cb.value); });
             multiSelectSelected[id] = sel;
+            updateSelectAllState(id);
             updateMultiSelectBtn(id);
+        }
+
+        function toggleSelectAll(id, checked) {
+            const drop = document.getElementById(id + '-drop');
+            const checks = drop.querySelectorAll('input[type="checkbox"]:not([value=\"\"])');
+            const sel = new Set();
+            checks.forEach(cb => {
+                cb.checked = checked;
+                if (checked) sel.add(cb.value);
+            });
+            multiSelectSelected[id] = sel;
+            updateMultiSelectBtn(id);
+        }
+
+        function updateSelectAllState(id) {
+            const drop = document.getElementById(id + '-drop');
+            const allCb = drop.querySelector('.select-all input');
+            const checks = drop.querySelectorAll('input[type="checkbox"]:not([value=\"\"])');
+            if (!allCb || checks.length === 0) return;
+            const checkedCount = Array.from(checks).filter(cb => cb.checked).length;
+            allCb.checked = checkedCount === checks.length;
+            allCb.indeterminate = checkedCount > 0 && checkedCount < checks.length;
         }
 
         function toggleMultiSelect(id) {
@@ -3522,12 +3551,15 @@
             const signed = analysisData.filter(o => o.status === '已签收' || o.status === '已回单确认').length;
             const onTime = analysisData.filter(o => o.logistics_time === '准时').length;
             const onTimeRate = signed > 0 ? Math.round(onTime / signed * 100) : 0;
-            
+            const pcCount = analysisData.filter(o => o.receive_source === 'PC').length;
+            const pcRate = total > 0 ? (pcCount / total * 100).toFixed(1) : '0.0';
+
             const cards = [
                 { label: '订单总数', value: total.toLocaleString(), sub: '单', color: 'blue' },
                 { label: '总重量', value: (totalWeight / 1000).toFixed(1), sub: '吨', color: 'emerald' },
                 { label: '平均重量', value: avgWeight.toLocaleString(), sub: '吨/单', color: 'amber' },
-                { label: '准时率', value: onTimeRate, sub: '%', color: 'purple' }
+                { label: '准时率', value: onTimeRate, sub: '%', color: 'purple' },
+                { label: 'PC签收率', value: pcRate, sub: `%（${pcCount}/${total}）`, color: 'rose' }
             ];
             
             document.getElementById('analysisSummary').innerHTML = cards.map(c => `

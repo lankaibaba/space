@@ -25,9 +25,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 if getattr(sys, 'frozen', False):
     # 打包后的程序
     BASE_DIR = sys._MEIPASS
+    SAVE_DIR = os.path.dirname(sys.executable)  # exe所在目录，用于写文件
 else:
     # 开发环境
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    SAVE_DIR = BASE_DIR
 
 app = Flask(__name__, static_folder=os.path.join(BASE_DIR, 'static'))
 CORS(app)
@@ -1701,7 +1703,7 @@ def set_provinces():
             AUTO_REGIONS = provinces if len(provinces) > 0 else ["湖南", "湖北", "新疆", "河北", "安徽"]
             # 保存到文件
             try:
-                config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'province_config.txt')
+                config_path = os.path.join(SAVE_DIR, 'province_config.txt')
                 with open(config_path, 'w', encoding='utf-8') as f:
                     f.write(','.join(AUTO_REGIONS))
             except Exception as e:
@@ -1717,7 +1719,7 @@ def load_province_config():
     """加载省份配置"""
     global AUTO_REGIONS
     try:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'province_config.txt')
+        config_path = os.path.join(SAVE_DIR, 'province_config.txt')
         if os.path.exists(config_path):
             with open(config_path, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
@@ -1753,7 +1755,7 @@ def set_networks():
             SELECTED_NETWORKS = networks if len(networks) > 0 else list(ALL_NETWORKS.keys())
             # 保存到文件
             try:
-                script_dir = os.path.dirname(os.path.abspath(__file__))
+                script_dir = SAVE_DIR
                 config_path = os.path.join(script_dir, 'network_config.txt')
                 with open(config_path, 'w', encoding='utf-8') as f:
                     f.write(','.join(SELECTED_NETWORKS))
@@ -1770,7 +1772,7 @@ def load_network_config():
     """加载网点配置"""
     global SELECTED_NETWORKS
     try:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'network_config.txt')
+        config_path = os.path.join(SAVE_DIR, 'network_config.txt')
         if os.path.exists(config_path):
             with open(config_path, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
@@ -1868,6 +1870,7 @@ def parse_stowage_order(order):
         "sub_type_code": order.get("sub_type_code_show"),
         "customer": order.get("exe_pur_order_b", {}).get("customer"),
         "customer_group": order.get("exe_pur_order_b", {}).get("customer_group"),
+        "receive_source": order.get("receive_source", ""),
     }
 
 
@@ -2160,7 +2163,7 @@ def api_order_analysis_export():
                                 download_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/file/download/{file_key}?authCode={auth_code}"
                                 dl_resp = _sess().get(download_url, headers=headers, timeout=60)
                                 if dl_resp.status_code == 200:
-                                    save_dir = os.path.dirname(os.path.abspath(__file__))
+                                    save_dir = SAVE_DIR
                                     save_path = os.path.join(save_dir, custom_name)
                                     with open(save_path, "wb") as f:
                                         f.write(dl_resp.content)
