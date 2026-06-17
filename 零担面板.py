@@ -1786,29 +1786,20 @@ def load_network_config():
 
 # 导出字段配置
 EXPORT_SORT_FIELDS = [
-    "source_order_no", "exe_pur_order_b.order_date", "delivery_date", "receive_time",
-    "stowage_all_weight", "signed_weight", "status_dk", "receive_name", "detailed_address",
-    "receiver_name", "receiver_phone", "salesman_name", "receive_region_code", "material_name",
-    "packaging_num", "plate_no", "carrier_name", "carrier_phone", "no", "order_no",
-    "type_code", "sub_type_code", "expected_arrival_date", "k_contract_line_a.network",
-    "exe_pur_order_b.pur_org_code", "created_date", "start_time",
-    "receiver", "receive_registrant",
-    "exe_pur_order_b.customer", "exe_pur_order_b.total_weight",
-    "shipping_weight", "refund_weight", "exceed_weight",
-    "send_address", "send_name",
-    "exe_delivery_note_b.attachment", "sign_attachment", "arrive_attachment",
-    "exe_pur_order_b.purveyor", "receipt_time", "exe_pur_order_b.customer_no",
-    "receive_prescription", "receive_source",
-    "exe_delivery_note_b.is_borrow_sold", "exe_delivery_note_b.ship_no", "exe_delivery_note_b.container_no",
-    "order_type_code", "exe_pur_order_b.send_storage_code",
-    "audit_check", "exe_delivery_note_b.yz_flag",
-    "exe_pur_order_b.receiver_name", "exe_pur_order_b.receiver_phone",
-    "posting_date", "sign_status", "exe_pur_order_b.customer_group",
-    "send_region_code", "is_sent_out", "is_post",
-    "exe_pur_order_b.mat_desc", "exe_pur_order_b.change_label_flag",
-    "sent_out_date", "the_way_flag",
-    "exe_pur_order_b.sale_org", "exe_pur_order_b.customer_grade",
-    "logistics_time", "customer_prescription"
+    "source_order_no", "k_contract_line_a.network", "order_no", "no", "plate_no", "carrier_name",
+    "carrier_phone", "receive_name", "salesman_name", "type_code", "sub_type_code", "status_dk",
+    "exe_pur_order_b.order_date", "detailed_address", "receiver_name", "receiver_phone", "expected_arrival_date", "delivery_date",
+    "exe_pur_order_b.pur_org_code", "created_date", "start_time", "receive_time", "receiver", "receive_registrant",
+    "stowage_all_weight", "exe_pur_order_b.customer", "signed_weight", "exe_pur_order_b.total_weight", "shipping_weight", "refund_weight",
+    "exceed_weight", "send_address", "send_name", "exe_delivery_note_b.attachment", "sign_attachment", "arrive_attachment",
+    "exe_pur_order_b.purveyor", "receipt_time", "exe_pur_order_b.customer_no", "receive_prescription", "receive_source", "exe_delivery_note_b.is_borrow_sold",
+    "exe_delivery_note_b.ship_no", "exe_delivery_note_b.container_no", "order_type_code", "exe_pur_order_b.send_storage_code", "audit_check", "exe_delivery_note_b.yz_flag",
+    "exe_pur_order_b.receiver_name", "exe_pur_order_b.receiver_phone", "posting_date", "sign_status", "exe_pur_order_b.customer_group", "send_region_code",
+    "receive_region_code", "is_sent_out", "is_post", "exe_pur_order_b.mat_desc", "exe_pur_order_b.change_label_flag", "sent_out_date",
+    "the_way_flag", "packaging_num", "material_name", "exe_pur_order_b.sale_org", "exe_pur_order_b.customer_grade", "logistics_time",
+    "customer_prescription", "exe_pur_order_b.pick_up_no", "id", "receipt_status", "source_system", "province_id",
+    "city_id", "receive_district_code", "exe_delivery_note_b.expect_date_arrival", "car_type", "exe_pur_order_b.transport_mode", "supplier_code",
+    "receive_park_code", "unload_arrive", "receive_park_order_no", "car_type", "discharge_flag", "customer_no",
 ]
 
 
@@ -2136,7 +2127,8 @@ def api_order_analysis_export():
             "specialConditions": [],
             "dynamicFormCode": "stowage_sign_receipt",
             "developmentSystemId": None,
-            "debugFlag": False
+            "debugFlag": False,
+            "exportSortFields": EXPORT_SORT_FIELDS
         }
         
         export_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/module-data/receive_management/async-export"
