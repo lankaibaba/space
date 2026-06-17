@@ -2175,11 +2175,26 @@ def api_order_analysis_export():
                                 download_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/file/download/{file_key}?authCode={auth_code}"
                                 dl_resp = _sess().get(download_url, headers=headers, timeout=60)
                                 if dl_resp.status_code == 200:
+                                    # 清理文件名中的非法字符
+                                    safe_name = re.sub(r'[\\/:*?"<>|]', '_', custom_name)
                                     save_dir = SAVE_DIR
-                                    save_path = os.path.join(save_dir, custom_name)
-                                    with open(save_path, "wb") as f:
-                                        f.write(dl_resp.content)
-                                    return jsonify({"success": True, "filename": custom_name, "path": save_path})
+                                    save_path = os.path.join(save_dir, safe_name)
+                                    # 文件已存在时加序号避免覆盖冲突
+                                    if os.path.exists(save_path):
+                                        base, ext = os.path.splitext(safe_name)
+                                        for n in range(1, 100):
+                                            alt = f"{base} ({n}){ext}"
+                                            alt_path = os.path.join(save_dir, alt)
+                                            if not os.path.exists(alt_path):
+                                                save_path = alt_path
+                                                safe_name = alt
+                                                break
+                                    try:
+                                        with open(save_path, "wb") as f:
+                                            f.write(dl_resp.content)
+                                        return jsonify({"success": True, "filename": safe_name, "path": save_path})
+                                    except PermissionError:
+                                        return jsonify({"success": False, "message": f"文件被占用无法写入: {safe_name}，请关闭已打开的同名文件后重试"})
         
         return jsonify({"success": False, "message": "导出超时"})
     except Exception as e:
