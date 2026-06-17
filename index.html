@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>王友小助手</title>
+    <link rel="icon" type="image/svg+xml" href="/static/app-logo.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
@@ -314,10 +315,8 @@
             <div class="flex items-center justify-between">
                 <div>
                     <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-3">
-                        <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg">
-                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
-                            </svg>
+                        <span class="inline-flex items-center justify-center w-11 h-11 rounded-2xl shadow-lg overflow-hidden bg-gradient-to-br from-sky-400 via-indigo-500 to-purple-500">
+                            <img src="/static/app-logo.svg" alt="王友小助手 Logo" class="w-full h-full object-cover" draggable="false">
                         </span>
                         王友小助手
                     </h1>
@@ -343,6 +342,12 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
                         </svg>
                         在途
+                    </button>
+                    <button onclick="checkForUpdate(false)" id="updateCheckBtn" class="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl hover:from-emerald-600 hover:to-teal-600 transition-all shadow-md hover:shadow-lg font-medium">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0019 5m0 14A9 9 0 005 5"></path>
+                        </svg>
+                        检查更新
                     </button>
                     <button onclick="handleRefresh()" id="refreshBtn" class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all shadow-md hover:shadow-lg font-medium">
                         <svg class="w-4 h-4" id="refreshIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1168,6 +1173,35 @@
         </div>
     </div>
 
+    <!-- 更新弹窗 -->
+    <div id="updateModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" style="display: none;">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div class="flex items-center justify-between p-5 border-b bg-gradient-to-r from-emerald-50 to-teal-50">
+                <div>
+                    <h3 class="text-lg font-semibold text-emerald-800">发现新版本</h3>
+                    <p id="updateVersionText" class="text-sm text-emerald-600 mt-1">--</p>
+                </div>
+                <button onclick="closeUpdateModal()" class="w-9 h-9 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow border border-slate-200 text-slate-500 hover:text-slate-700 transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <div class="text-sm font-medium text-slate-700 mb-2">更新说明</div>
+                    <div id="updateNotes" class="max-h-56 overflow-y-auto whitespace-pre-wrap text-sm text-slate-600 bg-slate-50 rounded-xl p-3 border border-slate-100">--</div>
+                </div>
+                <div id="updateStatus" class="text-sm text-slate-500">可下载更新包。</div>
+            </div>
+            <div class="flex items-center justify-end gap-3 p-5 border-t bg-slate-50">
+                <button onclick="closeUpdateModal()" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-white transition">稍后</button>
+                <button onclick="downloadUpdate()" id="downloadUpdateBtn" class="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 transition shadow font-medium">下载更新</button>
+                <button onclick="applyUpdate()" id="applyUpdateBtn" class="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 transition shadow font-medium" style="display: none;">立即重启更新</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
         // 五省定义
@@ -1189,6 +1223,153 @@
         let selectedNetworks = [];
         let allNetworks = [];
         let selectedNetworksSet = new Set();
+        let pendingUpdateInfo = null;
+        let pendingUpdateToken = null;
+
+        function escapeUpdateText(value) {
+            const div = document.createElement('div');
+            div.textContent = value == null ? '' : String(value);
+            return div.innerHTML;
+        }
+
+        function closeUpdateModal() {
+            const modal = document.getElementById('updateModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function openUpdateModal(info) {
+            pendingUpdateInfo = info || null;
+            pendingUpdateToken = null;
+
+            const modal = document.getElementById('updateModal');
+            const versionEl = document.getElementById('updateVersionText');
+            const notesEl = document.getElementById('updateNotes');
+            const statusEl = document.getElementById('updateStatus');
+            const downloadBtn = document.getElementById('downloadUpdateBtn');
+            const applyBtn = document.getElementById('applyUpdateBtn');
+
+            if (versionEl) {
+                const version = info?.version || info?.latest_version || info?.tag_name || '';
+                versionEl.textContent = version ? `新版本：${version}` : '发现可用更新';
+            }
+            if (notesEl) {
+                notesEl.textContent = info?.notes || info?.release_notes || info?.body || '暂无更新说明';
+            }
+            if (statusEl) statusEl.textContent = '可下载更新包。';
+            if (downloadBtn) {
+                downloadBtn.style.display = 'inline-flex';
+                downloadBtn.disabled = false;
+                downloadBtn.textContent = '下载更新';
+            }
+            if (applyBtn) {
+                applyBtn.style.display = 'none';
+                applyBtn.disabled = false;
+                applyBtn.textContent = '立即重启更新';
+            }
+            if (modal) modal.style.display = 'flex';
+        }
+
+        async function checkForUpdate(silent = false) {
+            const btn = document.getElementById('updateCheckBtn');
+            try {
+                if (btn) btn.disabled = true;
+                const response = await fetch('/api/check-update');
+                const result = await response.json();
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.message || result.error || '检查更新失败');
+                }
+
+                const updateInfo = result.update || result.data || result;
+                const hasUpdate = Boolean(result.has_update ?? result.update_available ?? updateInfo?.has_update ?? updateInfo?.update_available);
+                if (hasUpdate) {
+                    openUpdateModal(updateInfo);
+                } else if (!silent) {
+                    alert('当前已是最新版本');
+                }
+            } catch (error) {
+                console.error('检查更新失败:', error);
+                if (!silent) alert(`检查更新失败：${error.message}`);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function downloadUpdate() {
+            if (!pendingUpdateInfo?.download_url) {
+                alert('缺少更新下载地址');
+                return;
+            }
+
+            const statusEl = document.getElementById('updateStatus');
+            const downloadBtn = document.getElementById('downloadUpdateBtn');
+            const applyBtn = document.getElementById('applyUpdateBtn');
+            try {
+                if (downloadBtn) {
+                    downloadBtn.disabled = true;
+                    downloadBtn.textContent = '下载中...';
+                }
+                if (statusEl) statusEl.textContent = '正在下载更新包，请稍候...';
+
+                const response = await fetch('/api/download-update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ download_url: pendingUpdateInfo.download_url })
+                });
+                const result = await response.json();
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.message || result.error || '下载更新失败');
+                }
+
+                pendingUpdateToken = result.update_token || null;
+                if (statusEl) statusEl.textContent = '更新包下载完成，可立即重启更新。';
+                if (downloadBtn) downloadBtn.style.display = 'none';
+                if (applyBtn) applyBtn.style.display = 'inline-flex';
+            } catch (error) {
+                console.error('下载更新失败:', error);
+                if (statusEl) statusEl.textContent = `下载更新失败：${error.message}`;
+                alert(`下载更新失败：${error.message}`);
+                if (downloadBtn) {
+                    downloadBtn.disabled = false;
+                    downloadBtn.textContent = '下载更新';
+                }
+            }
+        }
+
+        async function applyUpdate() {
+            if (!pendingUpdateToken) {
+                alert('缺少更新令牌，请重新下载更新包');
+                return;
+            }
+
+            const statusEl = document.getElementById('updateStatus');
+            const applyBtn = document.getElementById('applyUpdateBtn');
+            try {
+                if (applyBtn) {
+                    applyBtn.disabled = true;
+                    applyBtn.textContent = '正在重启...';
+                }
+                if (statusEl) statusEl.textContent = '正在应用更新并重启，请稍候...';
+
+                const response = await fetch('/api/apply-update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ update_token: pendingUpdateToken })
+                });
+                const result = await response.json();
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.message || result.error || '应用更新失败');
+                }
+                if (statusEl) statusEl.textContent = result.message || '更新已开始应用，应用将重启。';
+            } catch (error) {
+                console.error('应用更新失败:', error);
+                if (statusEl) statusEl.textContent = `应用更新失败：${error.message}`;
+                alert(`应用更新失败：${error.message}`);
+                if (applyBtn) {
+                    applyBtn.disabled = false;
+                    applyBtn.textContent = '立即重启更新';
+                }
+            }
+        }
 
         function formatNumber(num) {
             if (num === undefined || num === null || isNaN(num)) return '--';
@@ -3781,6 +3962,10 @@
                 setBtnLoading('analysisExportBtn', false, '', '导出');
             }
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => checkForUpdate(true), 1500);
+        });
 
         // 初始化时加载
         if (document.readyState === 'loading') {

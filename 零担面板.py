@@ -1,4 +1,7 @@
 import sys, os, re
+import secrets
+from urllib.parse import urlparse, unquote
+from functools import wraps
 
 # 打包后静默运行，不弹命令行窗口
 if getattr(sys, 'frozen', False):
@@ -66,6 +69,312 @@ RECEIPT_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/receive_manag
 KPI_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal_tabul/page"
 KPI_DETAIL_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal/supplier_abnormal/375549423855472640"
 
+# ====================== 【程序版本与自动更新】 ======================
+APP_VERSION = "1.0.1"
+GITHUB_REPO = "lankaibaba/space"
+UPDATE_ASSET_NAME = "王友小助手.exe"
+GITHUB_LATEST_RELEASE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+LOCAL_UPDATE_HOSTS = {'localhost', '127.0.0.1', '::1'}
+LOCAL_UPDATE_ADDRS = LOCAL_UPDATE_HOSTS | {'::ffff:127.0.0.1'}
+
+
+def is_local_request():
+    """仅允许来自本机回环地址的自动更新请求。"""
+    remote_addr = (request.remote_addr or '').strip().lower()
+    if remote_addr.startswith('::ffff:'):
+        remote_addr = remote_addr.rsplit(':', 1)[-1]
+    return remote_addr in LOCAL_UPDATE_ADDRS
+
+
+def is_trusted_update_origin():
+    """Origin/Referer 存在时必须来自本机页面；缺省时交由 remote_addr 限制。"""
+    source = request.headers.get('Origin') or request.headers.get('Referer')
+    if not source:
+        return True
+    try:
+        parsed = urlparse(source)
+    except Exception:
+        return False
+    host = (parsed.hostname or '').strip().lower()
+    return host in LOCAL_UPDATE_HOSTS
+
+
+def require_update_request_allowed(view_func):
+    """限制自动更新接口只能由本机或本机页面触发。"""
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if not is_local_request() or not is_trusted_update_origin():
+            return jsonify({
+                "success": False,
+                "message": "自动更新接口仅允许本机页面调用"
+            }), 403
+        return view_func(*args, **kwargs)
+    return wrapper
+
+
+def parse_version(version):
+    """解析版本号，支持 v1.2.3 / 1.2.3 / 1.2，失败返回 None。"""
+    if not isinstance(version, str):
+        return None
+    text = version.strip()
+    if text.lower().startswith('v'):
+        text = text[1:]
+    if not text:
+        return None
+    parts = text.split('.')
+    if len(parts) > 3:
+        return None
+    nums = []
+    for part in parts:
+        if not part.isdigit():
+            return None
+        nums.append(int(part))
+    while len(nums) < 3:
+        nums.append(0)
+    return tuple(nums)
+
+
+def compare_versions(left, right):
+    """比较两个版本号：left > right 返回 1，相等返回 0，left < right 返回 -1。"""
+    left_tuple = parse_version(left)
+    right_tuple = parse_version(right)
+    if left_tuple is None or right_tuple is None:
+        raise ValueError(f"版本号格式无效: {left} / {right}")
+    if left_tuple > right_tuple:
+        return 1
+    if left_tuple < right_tuple:
+        return -1
+    return 0
+
+
+def get_app_executable_path():
+    """获取主程序 exe 路径；开发环境返回目标打包路径。"""
+    if getattr(sys, 'frozen', False):
+        return sys.executable
+    return os.path.join(SAVE_DIR, UPDATE_ASSET_NAME)
+
+
+def normalize_version(version):
+    """返回不带 v 前缀的版本字符串。"""
+    if not isinstance(version, str):
+        return ""
+    text = version.strip()
+    if text.lower().startswith('v'):
+        text = text[1:]
+    return text
+
+
+def build_update_info(release, current_version=APP_VERSION):
+    """根据 GitHub Release 数据构建更新检查结果。"""
+    tag_name = release.get('tag_name', '')
+    latest_version = normalize_version(tag_name)
+    if not parse_version(latest_version):
+        return {
+            "success": False,
+            "message": f"远程版本号格式无效: {tag_name}"
+        }
+
+    asset = None
+    for item in release.get('assets', []):
+        if item.get('name') == UPDATE_ASSET_NAME:
+            asset = item
+            break
+
+    if asset is None:
+        return {
+            "success": False,
+            "message": f"发布包缺少程序文件: {UPDATE_ASSET_NAME}"
+        }
+
+    try:
+        has_update = compare_versions(latest_version, current_version) > 0
+    except ValueError as exc:
+        return {"success": False, "message": str(exc)}
+
+    return {
+        "success": True,
+        "current_version": current_version,
+        "latest_version": latest_version,
+        "has_update": has_update,
+        "download_url": asset.get('browser_download_url', ''),
+        "release_url": release.get('html_url', ''),
+        "notes": release.get('body') or "",
+    }
+
+
+def fetch_latest_release():
+    """获取 GitHub latest release。"""
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": f"WangyouHelper/{APP_VERSION}"
+    }
+    response = requests.get(GITHUB_LATEST_RELEASE_URL, headers=headers, timeout=15)
+    response.raise_for_status()
+    return response.json()
+
+
+def check_update_info():
+    """检查是否存在新版本。"""
+    release = fetch_latest_release()
+    return build_update_info(release, APP_VERSION)
+
+
+def get_update_temp_path():
+    """新版 exe 临时下载路径。"""
+    return os.path.join(SAVE_DIR, UPDATE_ASSET_NAME + ".new")
+
+
+def is_github_release_download_url(url):
+    """限制下载来源为当前仓库 Release 附件，支持 percent-encoded 文件名。"""
+    if not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url)
+        decoded_path = unquote(parsed.path)
+    except Exception:
+        return False
+    return (
+        parsed.scheme == 'https'
+        and parsed.netloc == 'github.com'
+        and decoded_path.startswith(f"/{GITHUB_REPO}/releases/download/")
+        and decoded_path.endswith('/' + UPDATE_ASSET_NAME)
+    )
+
+
+def validate_latest_update_download_url(download_url):
+    """服务端校验客户端请求的下载地址必须等于 latest release 的更新文件。"""
+    update_info = check_update_info()
+    if not update_info.get("success"):
+        raise ValueError(update_info.get("message") or "检查最新版本失败")
+    if not update_info.get("has_update"):
+        raise ValueError("当前已是最新版本")
+    latest_url = update_info.get("download_url", "")
+    if download_url != latest_url:
+        raise ValueError("下载地址不是最新版本的程序文件")
+    if not is_github_release_download_url(download_url):
+        raise ValueError("下载地址不是当前 GitHub Release 的程序文件")
+    return latest_url
+
+
+def escape_bat_value(value):
+    """转义写入 bat 变量/参数值的 cmd 元字符。"""
+    text = str(value)
+    for old, new in (
+        ('%', '%%'),
+        ('^', '^^'),
+        ('&', '^&'),
+        ('<', '^<'),
+        ('>', '^>'),
+        ('|', '^|'),
+    ):
+        text = text.replace(old, new)
+    return text
+
+
+def download_update_asset(download_url):
+    """下载新版 exe，成功返回保存路径。"""
+    if not is_github_release_download_url(download_url):
+        raise ValueError("下载地址不是当前 GitHub Release 的程序文件")
+
+    temp_path = get_update_temp_path()
+    partial_path = temp_path + ".download"
+    if os.path.exists(partial_path):
+        os.remove(partial_path)
+
+    headers = {"User-Agent": f"WangyouHelper/{APP_VERSION}"}
+    with requests.get(download_url, headers=headers, stream=True, timeout=60) as response:
+        response.raise_for_status()
+        with open(partial_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+    if os.path.getsize(partial_path) <= 0:
+        os.remove(partial_path)
+        raise ValueError("下载文件为空")
+
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
+    os.replace(partial_path, temp_path)
+    return temp_path
+
+
+def build_update_bat_content(app_exe, new_exe):
+    """生成 Windows 自替换脚本内容。"""
+    safe_app_exe = escape_bat_value(app_exe)
+    safe_new_exe = escape_bat_value(new_exe)
+    app_name = escape_bat_value(os.path.basename(app_exe))
+    return f'''@echo off
+chcp 65001 >nul
+set "APP_EXE={safe_app_exe}"
+set "NEW_EXE={safe_new_exe}"
+
+timeout /t 2 /nobreak >nul
+
+:retry_delete
+if not exist "%APP_EXE%" goto rename_new
+del "%APP_EXE%" >nul 2>nul
+if exist "%APP_EXE%" goto wait_retry
+
+goto rename_new
+
+:wait_retry
+timeout /t 1 /nobreak >nul
+goto retry_delete
+
+:rename_new
+if not exist "%NEW_EXE%" goto fail
+ren "%NEW_EXE%" "{app_name}"
+if not exist "%APP_EXE%" goto fail
+start "" "%APP_EXE%"
+del "%~f0"
+exit /b 0
+
+:fail
+echo 更新失败，请手动重启或重新下载。
+pause
+exit /b 1
+'''
+
+
+def launch_update_bat(bat_path):
+    """安全启动更新 bat。"""
+    # 不经 cmd /c 拼接命令，避免空格、括号、&、% 等路径字符被 cmd 重新解析。
+    # os.startfile 使用 Windows ShellExecute 按文件路径启动，适合启动 .bat 文件。
+    os.startfile(bat_path)
+
+
+def write_update_bat():
+    """写入更新脚本，返回脚本路径。"""
+    app_exe = get_app_executable_path()
+    new_exe = get_update_temp_path()
+    if not os.path.exists(new_exe):
+        raise FileNotFoundError("未找到已下载的新版本文件")
+
+    bat_path = os.path.join(SAVE_DIR, "update.bat")
+    content = build_update_bat_content(app_exe, new_exe)
+    with open(bat_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    return bat_path
+
+
+def schedule_shutdown(delay=1.0):
+    """延迟关闭当前进程，让 HTTP 响应先返回给前端。"""
+    def _shutdown():
+        time.sleep(delay)
+        os._exit(0)
+    threading.Thread(target=_shutdown, daemon=True).start()
+
+
+def consume_pending_update_token(update_token):
+    """原子校验并一次性消费更新令牌。"""
+    global pending_update_token
+    with pending_update_token_lock:
+        if not pending_update_token or update_token != pending_update_token:
+            return False
+        pending_update_token = None
+        return True
+
 # 全局缓存数据
 cache_data = {
     "manual_query": {},
@@ -81,6 +390,8 @@ cache_data = {
     "last_update": None
 }
 cache_lock = threading.Lock()
+pending_update_token = None
+pending_update_token_lock = threading.Lock()
 
 
 # ====================== HTTP连接池（线程本地复用，避免重复TLS握手） ======================
@@ -1224,6 +1535,83 @@ def index():
         with open(os.path.join(BASE_DIR, 'index.html'), 'r', encoding='utf-8') as f:
             _index_html = f.read()
     return _index_html
+
+
+@app.route('/api/version')
+def api_version():
+    return jsonify({
+        "success": True,
+        "version": APP_VERSION,
+        "repo": GITHUB_REPO,
+        "frozen": bool(getattr(sys, 'frozen', False))
+    })
+
+
+@app.route('/api/check-update')
+@require_update_request_allowed
+def api_check_update():
+    try:
+        return jsonify(check_update_info())
+    except requests.RequestException as exc:
+        return jsonify({
+            "success": False,
+            "message": f"检查更新失败：无法连接 GitHub，请稍后重试（{exc}）"
+        })
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"检查更新失败：{exc}"})
+
+
+@app.route('/api/download-update', methods=['POST'])
+@require_update_request_allowed
+def api_download_update():
+    global pending_update_token
+    try:
+        data = request.get_json(silent=True) or {}
+        download_url = data.get('download_url', '')
+        latest_url = validate_latest_update_download_url(download_url)
+        temp_path = download_update_asset(latest_url)
+        update_token = secrets.token_urlsafe(24)
+        with pending_update_token_lock:
+            pending_update_token = update_token
+        return jsonify({
+            "success": True,
+            "message": "下载完成，点击立即重启更新",
+            "file": os.path.basename(temp_path),
+            "update_token": update_token
+        })
+    except requests.RequestException as exc:
+        return jsonify({"success": False, "message": f"下载更新失败：网络异常（{exc}）"})
+    except Exception as exc:
+        partial_path = get_update_temp_path() + ".download"
+        if os.path.exists(partial_path):
+            try:
+                os.remove(partial_path)
+            except OSError:
+                pass
+        return jsonify({"success": False, "message": f"下载更新失败：{exc}"})
+
+
+@app.route('/api/apply-update', methods=['POST'])
+@require_update_request_allowed
+def api_apply_update():
+    if not getattr(sys, 'frozen', False):
+        return jsonify({
+            "success": False,
+            "message": "开发环境不执行自动替换，请在打包后的 exe 中使用此功能"
+        })
+
+    data = request.get_json(silent=True) or {}
+    update_token = data.get('update_token', '')
+    if not consume_pending_update_token(update_token):
+        return jsonify({"success": False, "message": "更新令牌无效，请重新下载更新"})
+
+    try:
+        bat_path = write_update_bat()
+        launch_update_bat(bat_path)
+        schedule_shutdown()
+        return jsonify({"success": True, "message": "程序即将重启并完成更新"})
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"启动更新失败：{exc}"})
 
 
 @app.route('/api/dashboard')
