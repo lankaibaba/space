@@ -1792,9 +1792,22 @@ EXPORT_SORT_FIELDS = [
     "packaging_num", "plate_no", "carrier_name", "carrier_phone", "no", "order_no",
     "type_code", "sub_type_code", "expected_arrival_date", "k_contract_line_a.network",
     "exe_pur_order_b.pur_org_code", "created_date", "start_time",
+    "receiver", "receive_registrant",
     "exe_pur_order_b.customer", "exe_pur_order_b.total_weight",
-    "shipping_weight", "send_address", "send_name",
-    "receipt_time", "exe_pur_order_b.customer_no",
+    "shipping_weight", "refund_weight", "exceed_weight",
+    "send_address", "send_name",
+    "exe_delivery_note_b.attachment", "sign_attachment", "arrive_attachment",
+    "exe_pur_order_b.purveyor", "receipt_time", "exe_pur_order_b.customer_no",
+    "receive_prescription", "receive_source",
+    "exe_delivery_note_b.is_borrow_sold", "exe_delivery_note_b.ship_no", "exe_delivery_note_b.container_no",
+    "order_type_code", "exe_pur_order_b.send_storage_code",
+    "audit_check", "exe_delivery_note_b.yz_flag",
+    "exe_pur_order_b.receiver_name", "exe_pur_order_b.receiver_phone",
+    "posting_date", "sign_status", "exe_pur_order_b.customer_group",
+    "send_region_code", "is_sent_out", "is_post",
+    "exe_pur_order_b.mat_desc", "exe_pur_order_b.change_label_flag",
+    "sent_out_date", "the_way_flag",
+    "exe_pur_order_b.sale_org", "exe_pur_order_b.customer_grade",
     "logistics_time", "customer_prescription"
 ]
 
@@ -2123,8 +2136,7 @@ def api_order_analysis_export():
             "specialConditions": [],
             "dynamicFormCode": "stowage_sign_receipt",
             "developmentSystemId": None,
-            "debugFlag": False,
-            "exportSortFields": EXPORT_SORT_FIELDS
+            "debugFlag": False
         }
         
         export_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/module-data/receive_management/async-export"
