@@ -1798,9 +1798,10 @@ EXPORT_SORT_FIELDS = [
     "receive_region_code", "is_sent_out", "is_post", "exe_pur_order_b.mat_desc", "exe_pur_order_b.change_label_flag", "sent_out_date",
     "the_way_flag", "packaging_num", "material_name", "exe_pur_order_b.sale_org", "exe_pur_order_b.customer_grade", "logistics_time",
     "customer_prescription", "exe_pur_order_b.pick_up_no", "id", "receipt_status", "source_system", "province_id",
-    "city_id", "receive_district_code", "exe_delivery_note_b.expect_date_arrival", "car_type", "exe_pur_order_b.transport_mode", "supplier_code",
+    "city_id", "receive_district_code", "exe_delivery_note_b.expect_date_arrival", "supplier_code", "exe_pur_order_b.transport_mode", "car_type",
     "receive_park_code", "unload_arrive", "receive_park_order_no", "car_type", "discharge_flag", "customer_no",
 ]
+
 
 
 def query_stowage_orders(token, rules, size=5000):
