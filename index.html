@@ -984,7 +984,7 @@
                         <div class="multi-select" id="ms-logistics">
                             <div class="multi-select-btn" onclick="toggleMultiSelect('ms-logistics')">全部</div>
                             <div class="multi-select-drop" id="ms-logistics-drop">
-                                <label class="select-all"><input type="checkbox" value="" onchange="toggleSelectAll('ms-logistics', this.checked)"><span class="font-medium">全选</span></label>
+                                <label class="select-all"><input type="checkbox" value="" onchange="toggleMultiSelectAll('ms-logistics', this.checked)"><span class="font-medium">全选</span></label>
                                 <label><input type="checkbox" value="准时" onchange="onMultiSelectChange('ms-logistics')"><span>准时</span></label>
                                 <label><input type="checkbox" value="延误" onchange="onMultiSelectChange('ms-logistics')"><span>延误</span></label>
                                 <label><input type="checkbox" value="未签收" onchange="onMultiSelectChange('ms-logistics')"><span>未签收</span></label>
@@ -996,7 +996,7 @@
                         <div class="multi-select" id="ms-status">
                             <div class="multi-select-btn" onclick="toggleMultiSelect('ms-status')">全部</div>
                             <div class="multi-select-drop" id="ms-status-drop">
-                                <label class="select-all"><input type="checkbox" value="" onchange="toggleSelectAll('ms-status', this.checked)"><span class="font-medium">全选</span></label>
+                                <label class="select-all"><input type="checkbox" value="" onchange="toggleMultiSelectAll('ms-status', this.checked)"><span class="font-medium">全选</span></label>
                                 <label><input type="checkbox" value="待配载" onchange="onMultiSelectChange('ms-status')"><span>待配载</span></label>
                                 <label><input type="checkbox" value="已配载" onchange="onMultiSelectChange('ms-status')"><span>已配载</span></label>
                                 <label><input type="checkbox" value="已发车确认" onchange="onMultiSelectChange('ms-status')"><span>已发车确认</span></label>
@@ -3359,7 +3359,7 @@
             const opts = MULTI_SELECT_OPTIONS[id];
             const sel = multiSelectSelected[id];
             const allChecked = sel.size === 0 || sel.size === opts.length;
-            drop.innerHTML = `<label class="select-all"><input type="checkbox" value="" ${allChecked ? 'checked' : ''} onchange="toggleSelectAll('${id}', this.checked)"><span class="font-medium">全选</span></label>` +
+            drop.innerHTML = `<label class="select-all"><input type="checkbox" value="" ${allChecked ? 'checked' : ''} onchange="toggleMultiSelectAll('${id}', this.checked)"><span class="font-medium">全选</span></label>` +
                 opts.map(o => `<label><input type="checkbox" value="${o}" ${sel.has(o) ? 'checked' : ''} onchange="onMultiSelectChange('${id}')"><span>${o}</span></label>`).join('');
             updateSelectAllState(id);
             updateMultiSelectBtn(id);
@@ -3386,7 +3386,7 @@
             updateMultiSelectBtn(id);
         }
 
-        function toggleSelectAll(id, checked) {
+        function toggleMultiSelectAll(id, checked) {
             const drop = document.getElementById(id + '-drop');
             const checks = drop.querySelectorAll('input[type="checkbox"]:not([value=\"\"])');
             const sel = new Set();

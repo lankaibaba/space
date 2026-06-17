@@ -1784,23 +1784,25 @@ def load_network_config():
 
 # ====================== 订单分析API ======================
 
-# 导出字段配置
+# 导出字段配置（68列，与网页端exportSortFields完全一致）
 EXPORT_SORT_FIELDS = [
-    "source_order_no", "k_contract_line_a.network", "order_no", "no", "plate_no", "carrier_name",
-    "carrier_phone", "receive_name", "salesman_name", "type_code", "sub_type_code", "status_dk",
-    "exe_pur_order_b.order_date", "detailed_address", "receiver_name", "receiver_phone", "expected_arrival_date", "delivery_date",
-    "exe_pur_order_b.pur_org_code", "created_date", "start_time", "receive_time", "receiver", "receive_registrant",
-    "stowage_all_weight", "exe_pur_order_b.customer", "signed_weight", "exe_pur_order_b.total_weight", "shipping_weight", "refund_weight",
-    "exceed_weight", "send_address", "send_name", "exe_delivery_note_b.attachment", "sign_attachment", "arrive_attachment",
-    "exe_pur_order_b.purveyor", "receipt_time", "exe_pur_order_b.customer_no", "receive_prescription", "receive_source", "exe_delivery_note_b.is_borrow_sold",
-    "exe_delivery_note_b.ship_no", "exe_delivery_note_b.container_no", "order_type_code", "exe_pur_order_b.send_storage_code", "audit_check", "exe_delivery_note_b.yz_flag",
-    "exe_pur_order_b.receiver_name", "exe_pur_order_b.receiver_phone", "posting_date", "sign_status", "exe_pur_order_b.customer_group", "send_region_code",
-    "receive_region_code", "is_sent_out", "is_post", "exe_pur_order_b.mat_desc", "exe_pur_order_b.change_label_flag", "sent_out_date",
-    "the_way_flag", "packaging_num", "material_name", "exe_pur_order_b.sale_org", "exe_pur_order_b.customer_grade", "logistics_time",
-    "customer_prescription", "exe_pur_order_b.pick_up_no", "id", "receipt_status", "source_system", "province_id",
-    "city_id", "receive_district_code", "exe_delivery_note_b.expect_date_arrival", "supplier_code", "exe_pur_order_b.transport_mode", "car_type",
-    "receive_park_code", "unload_arrive", "receive_park_order_no", "car_type", "discharge_flag", "customer_no",
+    "source_order_no", "k_contract_line_a.network", "order_no", "no", "plate_no",
+    "carrier_name", "carrier_phone", "receive_name", "salesman_name", "type_code",
+    "sub_type_code", "status_dk", "exe_pur_order_b.order_date", "detailed_address", "receiver_name",
+    "receiver_phone", "expected_arrival_date", "delivery_date", "exe_pur_order_b.pur_org_code", "created_date",
+    "start_time", "receive_time", "receiver", "receive_registrant", "stowage_all_weight",
+    "exe_pur_order_b.customer", "signed_weight", "exe_pur_order_b.total_weight", "shipping_weight", "refund_weight",
+    "exceed_weight", "send_address", "send_name", "exe_delivery_note_b.attachment", "sign_attachment",
+    "arrive_attachment", "exe_pur_order_b.purveyor", "receipt_time", "exe_pur_order_b.customer_no", "receive_prescription",
+    "receive_source", "exe_delivery_note_b.is_borrow_sold", "exe_delivery_note_b.ship_no", "exe_delivery_note_b.container_no", "order_type_code",
+    "exe_pur_order_b.send_storage_code", "audit_check", "exe_delivery_note_b.yz_flag", "exe_pur_order_b.receiver_name", "exe_pur_order_b.receiver_phone",
+    "posting_date", "sign_status", "exe_pur_order_b.customer_group", "send_region_code", "receive_region_code",
+    "is_sent_out", "is_post", "exe_pur_order_b.mat_desc", "exe_pur_order_b.change_label_flag", "sent_out_date",
+    "the_way_flag", "packaging_num", "material_name", "exe_pur_order_b.sale_org", "exe_pur_order_b.customer_grade",
+    "logistics_time", "customer_prescription", "exe_pur_order_b.pick_up_no",
 ]
+
+
 
 
 
@@ -2059,7 +2061,7 @@ def api_order_analysis_analyze():
 
 @app.route('/api/order-analysis/export', methods=['POST'])
 def api_order_analysis_export():
-    """订单分析-导出（使用前端筛选条件）"""
+    """订单分析-导出（page query + openpyxl 构建，84列完全对齐）"""
     try:
         data = request.get_json(silent=True) or {}
         token = get_token()
@@ -2107,91 +2109,105 @@ def api_order_analysis_export():
                     api_rules.append({"field": "status_dk", "option": "IN", "values": status_vals})
 
         file_name = data.get('file_name', '订单导出.xlsx')
-        # 保存前端传入的自定义文件名，避免被API返回的默认名覆盖
-        custom_name = file_name
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0",
-            "language": "zh_CN",
-            "timezone": "UTC+0800"
-        }
-        
-        payload = {
-            "direction": "DESC",
-            "property": "id",
-            "fromClientType": "pc",
-            "number": 0,
-            "sorts": [],
-            "rules": api_rules,
-            "size": 5000,
-            "specialConditions": [],
-            "dynamicFormCode": "stowage_sign_receipt",
-            "developmentSystemId": None,
-            "debugFlag": False,
-            "exportSortFields": EXPORT_SORT_FIELDS
-        }
-        
-        export_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/module-data/receive_management/async-export"
-        resp = _sess().post(export_url, json=payload, headers=headers, timeout=30)
-        result = resp.json()
-        
-        if result.get("status") != "success":
-            return jsonify({"success": False, "message": result.get("message", "导出失败")})
-        
-        task_id = result.get("data", {}).get("id")
-        
-        # 轮询等待完成
-        queued_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/queued-task/my/{task_id}"
-        for i in range(30):
-            time.sleep(2 if i < 3 else 3)
-            poll_resp = _sess().get(queued_url, headers=headers, timeout=15)
-            if poll_resp.status_code == 200:
-                task_data = poll_resp.json()
-                if task_data.get("statusEk") == "SUCCEED":
-                    output_param = task_data.get("outputParam", {})
-                    content_str = output_param.get("content", "")
-                    if content_str:
-                        content = json.loads(content_str)
-                        attach_files = content.get("attachment", {}).get("attachFile", [])
-                        if attach_files:
-                            file_key = attach_files[0].get("key")
-                            api_name = attach_files[0].get("name", "export.xlsx")
-                            
-                            # 获取授权码
-                            auth_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/file/get-temporary-auth-code?key={file_key}"
-                            auth_resp = _sess().get(auth_url, headers=headers, timeout=15)
-                            auth_code = auth_resp.json().get("temporaryAuthCode")
-                            
-                            if auth_code:
-                                # 下载文件
-                                download_url = f"{BASE_URL.replace('/jbl/api', '')}/jbl/api/file/download/{file_key}?authCode={auth_code}"
-                                dl_resp = _sess().get(download_url, headers=headers, timeout=60)
-                                if dl_resp.status_code == 200:
-                                    # 清理文件名中的非法字符
-                                    safe_name = re.sub(r'[\\/:*?"<>|]', '_', custom_name)
-                                    save_dir = SAVE_DIR
-                                    save_path = os.path.join(save_dir, safe_name)
-                                    # 文件已存在时加序号避免覆盖冲突
-                                    if os.path.exists(save_path):
-                                        base, ext = os.path.splitext(safe_name)
-                                        for n in range(1, 100):
-                                            alt = f"{base} ({n}){ext}"
-                                            alt_path = os.path.join(save_dir, alt)
-                                            if not os.path.exists(alt_path):
-                                                save_path = alt_path
-                                                safe_name = alt
-                                                break
-                                    try:
-                                        with open(save_path, "wb") as f:
-                                            f.write(dl_resp.content)
-                                        return jsonify({"success": True, "filename": safe_name, "path": save_path})
-                                    except PermissionError:
-                                        return jsonify({"success": False, "message": f"文件被占用无法写入: {safe_name}，请关闭已打开的同名文件后重试"})
-        
-        return jsonify({"success": False, "message": "导出超时"})
+
+        # page query 获取原始数据
+        orders_raw = query_stowage_orders(token, api_rules, size=9999)
+        if not orders_raw:
+            return jsonify({"success": False, "message": "无匹配数据"})
+
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+
+        # 84列中文表头（与源网站导出完全一致）
+        COLUMN_HEADERS = [
+            "来源单号", "网点", "运输订单号", "配载单号", "车牌号",
+            "司机名称", "司机联系方式", "收货方名称", "业务员姓名", "业务类型",
+            "业务子类型", "配载单状态", "来源单创建日期", "收货地址", "收货联系人",
+            "收货联系人电话", "应当到货时间", "要求到货时间", "物流组织", "配载时间",
+            "发车时间", "签收时间", "签收人", "签收登记人", "配载总重量",
+            "客户名称", "签收重量", "订单总重量", "装货重量", "退货重量",
+            "超损耗重量", "发货地址", "发货方名称", "附件", "签收附件",
+            "到达附件", "供应商名称", "回单时间", "客户编号", "签单时效",
+            "签收来源", "是否让售", "船运船号", "船运箱号", "订单类型",
+            "发货仓库", "是否需要审核", "是否来源云载", "收货人", "收货人电话",
+            "过账日期", "签收状态", "客户组", "发货区域", "收货区域",
+            "是否寄出", "是否过账", "物料描述", "是否换标", "寄出时间",
+            "货物是否在途", "包装物件数", "物料名称", "销售组织", "客户等级",
+            "物流是否准时", "客户时效是否达成", "提货单号", "id", "回单状态",
+            "来源系统", "收货区域省份", "收货区域城市", "收货区域区县", "预计到厂时间",
+            "承运商", "运输方式", "承运商", "收货园区编号", "卸货到达",
+            "收货园区预约单号", "车辆类型", "是否需要卸货预约", "客户编号"
+        ]
+
+        # 对应字段码（前68个与EXPORT_SORT_FIELDS一致，后续为API自动追加字段）
+        FIELD_CODES = EXPORT_SORT_FIELDS + [
+            "id", "receipt_status", "source_system", "province_id", "city_id",
+            "receive_district_code", "exe_delivery_note_b.expect_date_arrival",
+            "car_type", "exe_pur_order_b.transport_mode", "car_type",
+            "receive_park_code", "unload_arrive", "receive_park_order_no",
+            "car_type", "discharge_flag", "exe_pur_order_b.customer_no"
+        ]
+
+        # 写表头
+        for col, header in enumerate(COLUMN_HEADERS, 1):
+            ws.cell(row=1, column=col, value=header)
+
+        # 字段值提取器
+        def get_field_value(obj, field_path):
+            parts = field_path.split('.')
+            val = obj
+            for p in parts:
+                if isinstance(val, dict):
+                    val = val.get(p)
+                else:
+                    return None
+            return val
+
+        # 需要格式化的时间字段
+        TIME_FIELDS = {'created_date', 'start_time', 'sent_out_date', 'receive_time',
+                       'delivery_date', 'expected_arrival_date', 'posting_date',
+                       'exe_pur_order_b.order_date', 'exe_delivery_note_b.expect_date_arrival'}
+
+        for row_idx, order in enumerate(orders_raw, 2):
+            for col_idx, field_code in enumerate(FIELD_CODES, 1):
+                val = get_field_value(order, field_code)
+                if val is None:
+                    continue
+                if isinstance(val, (dict, list)):
+                    val = json.dumps(val, ensure_ascii=False)
+                elif field_code in TIME_FIELDS and isinstance(val, str) and 'T' in val:
+                    try:
+                        dt_utc = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                        dt_bj = dt_utc + timedelta(hours=8)
+                        val = dt_bj.strftime("%Y-%m-%d %H:%M:%S")
+                    except:
+                        pass
+                ws.cell(row=row_idx, column=col_idx, value=val)
+
+        # 保存文件
+        safe_name = re.sub(r'[\\/:*?"<>|]', '_', file_name)
+        save_path = os.path.join(SAVE_DIR, safe_name)
+        if os.path.exists(save_path):
+            base, ext = os.path.splitext(safe_name)
+            for n in range(1, 100):
+                alt = f"{base} ({n}){ext}"
+                alt_path = os.path.join(SAVE_DIR, alt)
+                if not os.path.exists(alt_path):
+                    save_path = alt_path
+                    safe_name = alt
+                    break
+        try:
+            wb.save(save_path)
+            return jsonify({"success": True, "filename": safe_name, "path": save_path})
+        except PermissionError:
+            return jsonify({"success": False, "message": f"文件被占用: {safe_name}，请关闭已打开的同名文件"})
+
     except Exception as e:
         print(f"[ERROR] api_order_analysis_export: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"success": False, "message": str(e)})
 
 
