@@ -70,9 +70,10 @@ KPI_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal
 KPI_DETAIL_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal/supplier_abnormal/375549423855472640"
 
 # ====================== 【程序版本与自动更新】 ======================
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 GITHUB_REPO = "lankaibaba/space"
 UPDATE_ASSET_NAME = "王友小助手.exe"
+GITHUB_RELEASE_ASSET_NAMES = {UPDATE_ASSET_NAME, "default.exe"}
 GITHUB_LATEST_RELEASE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 LOCAL_UPDATE_HOSTS = {'localhost', '127.0.0.1', '::1'}
 LOCAL_UPDATE_ADDRS = LOCAL_UPDATE_HOSTS | {'::ffff:127.0.0.1'}
@@ -176,7 +177,7 @@ def build_update_info(release, current_version=APP_VERSION):
 
     asset = None
     for item in release.get('assets', []):
-        if item.get('name') == UPDATE_ASSET_NAME:
+        if item.get('name') in GITHUB_RELEASE_ASSET_NAMES:
             asset = item
             break
 
@@ -233,11 +234,12 @@ def is_github_release_download_url(url):
         decoded_path = unquote(parsed.path)
     except Exception:
         return False
+    asset_name = decoded_path.rsplit('/', 1)[-1]
     return (
         parsed.scheme == 'https'
         and parsed.netloc == 'github.com'
         and decoded_path.startswith(f"/{GITHUB_REPO}/releases/download/")
-        and decoded_path.endswith('/' + UPDATE_ASSET_NAME)
+        and asset_name in GITHUB_RELEASE_ASSET_NAMES
     )
 
 

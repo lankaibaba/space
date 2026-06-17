@@ -48,8 +48,27 @@ def test_build_update_info_detects_newer_release():
     assert info["download_url"].endswith("王友小助手.exe")
     assert info["notes"] == "修复导出问题"
 
+def test_build_update_info_detects_newer_release_with_default_asset_name():
+    release = {
+        "tag_name": "v1.0.1",
+        "html_url": "https://github.com/lankaibaba/space/releases/tag/v1.0.1",
+        "body": "修复导出问题",
+        "assets": [
+            {
+                "name": "default.exe",
+                "browser_download_url": "https://github.com/lankaibaba/space/releases/download/v1.0.1/default.exe",
+            }
+        ],
+    }
 
-def test_build_update_info_reports_missing_asset():
+    info = panel.build_update_info(release, current_version="1.0.0")
+
+    assert info["success"] is True
+    assert info["has_update"] is True
+    assert info["download_url"].endswith("default.exe")
+
+
+
     release = {
         "tag_name": "v1.0.1",
         "html_url": "https://github.com/lankaibaba/space/releases/tag/v1.0.1",
@@ -79,6 +98,12 @@ def test_build_update_bat_content_contains_retry_and_restart():
 
 def test_is_github_release_download_url_accepts_percent_encoded_asset():
     url = "https://github.com/lankaibaba/space/releases/download/v1.0.1/%E7%8E%8B%E5%8F%8B%E5%B0%8F%E5%8A%A9%E6%89%8B.exe"
+
+    assert panel.is_github_release_download_url(url) is True
+
+
+def test_is_github_release_download_url_accepts_default_asset_name():
+    url = "https://github.com/lankaibaba/space/releases/download/v1.0.1/default.exe"
 
     assert panel.is_github_release_download_url(url) is True
 
