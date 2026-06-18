@@ -66,11 +66,15 @@ BASE_URL = "https://sdm.etransfar.com/jbl/api"
 LOGIN_URL = "https://sdm.etransfar.com/jbl/api/login/?_allow_anonymous=true"
 QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/purchase_order/page"
 RECEIPT_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/receive_management/page"
+ORDER_ANALYSIS_ASYNC_EXPORT_URL = "https://sdm.etransfar.com/jbl/api/module-data/receive_management/async-export"
+QUEUED_TASK_URL = "https://sdm.etransfar.com/jbl/api/queued-task/my/{}"
+FILE_AUTH_CODE_URL = "https://sdm.etransfar.com/jbl/api/file/get-temporary-auth-code?key={}"
+FILE_DOWNLOAD_URL = "https://sdm.etransfar.com/jbl/api/file/download/{}?authCode={}"
 KPI_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal_tabul/page"
 KPI_DETAIL_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal/supplier_abnormal/375549423855472640"
 
 # ====================== 【程序版本与自动更新】 ======================
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 GITHUB_REPO = "lankaibaba/space"
 UPDATE_ASSET_NAME = "王友小助手.exe"
 GITHUB_RELEASE_ASSET_NAMES = {UPDATE_ASSET_NAME, "default.exe"}
@@ -2174,7 +2178,7 @@ def load_network_config():
 
 # ====================== 订单分析API ======================
 
-# 导出字段配置（68列，与网页端exportSortFields完全一致）
+# 查询页展示/本地字段映射配置
 EXPORT_SORT_FIELDS = [
     "source_order_no", "k_contract_line_a.network", "order_no", "no", "plate_no",
     "carrier_name", "carrier_phone", "receive_name", "salesman_name", "type_code",
@@ -2192,8 +2196,28 @@ EXPORT_SORT_FIELDS = [
     "logistics_time", "customer_prescription", "exe_pur_order_b.pick_up_no",
 ]
 
-
-
+# 订单分析导出使用源系统 async-export 默认方案。
+# 这些字段来自源网站自定义表格列顺序；系统会自动追加账号默认列，最终导出 84 列。
+ORDER_ANALYSIS_EXPORT_SORT_FIELDS = [
+    "source_order_no", "exe_pur_order_b.order_date", "delivery_date", "receive_time",
+    "stowage_all_weight", "signed_weight", "status_dk", "receive_name", "detailed_address",
+    "receiver_name", "receiver_phone", "salesman_name", "receive_region_code", "material_name",
+    "packaging_num", "plate_no", "carrier_name", "carrier_phone", "no", "order_no",
+    "type_code", "sub_type_code", "expected_arrival_date", "k_contract_line_a.network",
+    "exe_pur_order_b.pur_org_code", "created_date", "start_time", "receiver",
+    "receive_registrant", "exe_pur_order_b.customer", "exe_pur_order_b.total_weight",
+    "shipping_weight", "refund_weight", "exceed_weight", "send_address", "send_name",
+    "exe_delivery_note_b.attachment", "sign_attachment", "arrive_attachment",
+    "exe_pur_order_b.purveyor", "receipt_time", "exe_pur_order_b.customer_no",
+    "receive_prescription", "receive_source", "exe_delivery_note_b.is_borrow_sold",
+    "exe_delivery_note_b.ship_no", "exe_delivery_note_b.container_no", "order_type_code",
+    "exe_pur_order_b.send_storage_code", "audit_check", "exe_delivery_note_b.yz_flag",
+    "exe_pur_order_b.receiver_name", "exe_pur_order_b.receiver_phone", "posting_date",
+    "sign_status", "exe_pur_order_b.customer_group", "send_region_code", "is_sent_out",
+    "is_post", "exe_pur_order_b.mat_desc", "exe_pur_order_b.change_label_flag",
+    "sent_out_date", "the_way_flag", "exe_pur_order_b.sale_org",
+    "exe_pur_order_b.customer_grade", "logistics_time", "customer_prescription"
+]
 
 
 def query_stowage_orders(token, rules, size=5000):
@@ -2449,151 +2473,155 @@ def api_order_analysis_analyze():
         return jsonify({"success": False, "message": str(e)})
 
 
+def build_order_analysis_export_payload(rules):
+    """构建源系统订单分析 async-export 请求体。"""
+    return {
+        "direction": "DESC",
+        "property": "id",
+        "fromClientType": "pc",
+        "number": 0,
+        "sorts": [],
+        "rules": rules,
+        "size": 15,
+        "specialConditions": [],
+        "dynamicFormCode": "stowage_sign_receipt",
+        "developmentSystemId": None,
+        "debugFlag": False,
+        "exportSortFields": ORDER_ANALYSIS_EXPORT_SORT_FIELDS,
+    }
+
+
+def get_order_analysis_export_headers(token):
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0",
+        "language": "zh_CN",
+        "timezone": "UTC+0800",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://sdm.etransfar.com/",
+        "Origin": "https://sdm.etransfar.com",
+    }
+
+
+def submit_order_analysis_export(token, rules):
+    payload = build_order_analysis_export_payload(rules)
+    resp = _sess().post(ORDER_ANALYSIS_ASYNC_EXPORT_URL, json=payload,
+                        headers=get_order_analysis_export_headers(token), timeout=30)
+    resp.raise_for_status()
+    result = resp.json()
+    if result.get("status") != "success":
+        raise RuntimeError(result.get("message") or "提交导出任务失败")
+    task_id = result.get("data", {}).get("id")
+    if not task_id:
+        raise RuntimeError("提交导出任务失败：缺少任务ID")
+    return task_id
+
+
+def poll_order_analysis_export(token, task_id, max_wait=180):
+    headers = get_order_analysis_export_headers(token)
+    start_time = time.time()
+    while time.time() - start_time < max_wait:
+        resp = _sess().get(QUEUED_TASK_URL.format(task_id), headers=headers, timeout=15)
+        resp.raise_for_status()
+        task_data = resp.json()
+        status = task_data.get("statusEk", "")
+        if status == "SUCCEED":
+            content_text = task_data.get("outputParam", {}).get("content", "")
+            content = json.loads(content_text) if content_text else {}
+            files = content.get("attachment", {}).get("attachFile", [])
+            if not files:
+                raise RuntimeError("导出任务完成但没有生成文件")
+            return files[0].get("key"), files[0].get("name", "订单导出.xlsx")
+        if status in ("FAILED", "ERROR"):
+            raise RuntimeError("导出任务失败")
+        time.sleep(3)
+    raise TimeoutError("导出任务超时")
+
+
+def download_order_analysis_export_file(token, file_key, filename):
+    headers = get_order_analysis_export_headers(token)
+    auth_resp = _sess().get(FILE_AUTH_CODE_URL.format(file_key), headers=headers, timeout=15)
+    auth_resp.raise_for_status()
+    auth_code = auth_resp.json().get("temporaryAuthCode")
+    if not auth_code:
+        raise RuntimeError("获取下载授权码失败")
+
+    download_resp = _sess().get(FILE_DOWNLOAD_URL.format(file_key, auth_code), headers=headers, timeout=60)
+    download_resp.raise_for_status()
+
+    safe_name = re.sub(r'[\\/:*?"<>|]', '_', filename or "订单导出.xlsx")
+    save_path = os.path.join(SAVE_DIR, safe_name)
+    if os.path.exists(save_path):
+        base, ext = os.path.splitext(safe_name)
+        for n in range(1, 100):
+            alt = f"{base} ({n}){ext}"
+            alt_path = os.path.join(SAVE_DIR, alt)
+            if not os.path.exists(alt_path):
+                save_path = alt_path
+                safe_name = alt
+                break
+    with open(save_path, "wb") as f:
+        f.write(download_resp.content)
+    return save_path
+
+
+def build_order_analysis_export_rules(frontend_rules):
+    api_rules = []
+    for rule in frontend_rules:
+        field = rule.get('field', '')
+        values = rule.get('values', [])
+        if field == 'network':
+            network_ids = [ALL_NETWORKS[n] for n in values if n in ALL_NETWORKS]
+            if network_ids:
+                api_rules.append({"field": "k_contract_line_a.network", "option": "IN", "values": network_ids})
+        elif field == 'created' and len(values) == 2:
+            start = datetime.strptime(values[0], '%Y-%m-%d')
+            end = datetime.strptime(values[1], '%Y-%m-%d')
+            utc_start = datetime(start.year, start.month, start.day, 0, 0, 0) - timedelta(hours=8)
+            utc_end = datetime(end.year, end.month, end.day, 23, 59, 59) - timedelta(hours=8)
+            api_rules.append({"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
+                utc_start.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+                utc_end.strftime('%Y-%m-%dT%H:%M:%S.999Z')
+            ]})
+        elif field == 'sign' and len(values) == 2:
+            start = datetime.strptime(values[0], '%Y-%m-%d')
+            end = datetime.strptime(values[1], '%Y-%m-%d')
+            utc_start = datetime(start.year, start.month, start.day, 0, 0, 0) - timedelta(hours=8)
+            utc_end = datetime(end.year, end.month, end.day, 23, 59, 59) - timedelta(hours=8)
+            api_rules.append({"field": "receive_time", "option": "BTS", "values": [
+                utc_start.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+                utc_end.strftime('%Y-%m-%dT%H:%M:%S.999Z')
+            ]})
+        elif field == 'status':
+            status_map = {
+                "待配载": "WAITSTOWED", "已配载": "WAITDELIVER",
+                "已发车确认": "DEPARTRUECONFIR", "已签收": "SIGNEDIN",
+                "已回单确认": "RECEIPTCONFIR"
+            }
+            status_vals = [status_map[s] for s in values if s in status_map]
+            if status_vals:
+                api_rules.append({"field": "status_dk", "option": "IN", "values": status_vals})
+    return api_rules
+
+
 @app.route('/api/order-analysis/export', methods=['POST'])
 def api_order_analysis_export():
-    """订单分析-导出（page query + openpyxl 构建，84列完全对齐）"""
+    """订单分析-导出：调用源系统 async-export，保持源网站默认 Excel 格式。"""
     try:
         data = request.get_json(silent=True) or {}
         token = get_token()
         if not token:
             return jsonify({"success": False, "message": "登录失败"})
 
-        # 构建API筛选规则
-        frontend_rules = data.get('rules', [])
-        api_rules = []
-        for rule in frontend_rules:
-            field = rule.get('field', '')
-            values = rule.get('values', [])
-            if field == 'network':
-                network_ids = [ALL_NETWORKS[n] for n in values if n in ALL_NETWORKS]
-                if network_ids:
-                    api_rules.append({"field": "k_contract_line_a.network", "option": "IN", "values": network_ids})
-            elif field == 'created':
-                if len(values) == 2:
-                    start = datetime.strptime(values[0], '%Y-%m-%d')
-                    end = datetime.strptime(values[1], '%Y-%m-%d')
-                    utc_start = datetime(start.year, start.month, start.day, 0, 0, 0) - timedelta(hours=8)
-                    utc_end = datetime(end.year, end.month, end.day, 23, 59, 59) - timedelta(hours=8)
-                    api_rules.append({"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
-                        utc_start.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
-                        utc_end.strftime('%Y-%m-%dT%H:%M:%S.999Z')
-                    ]})
-            elif field == 'sign':
-                if len(values) == 2:
-                    start = datetime.strptime(values[0], '%Y-%m-%d')
-                    end = datetime.strptime(values[1], '%Y-%m-%d')
-                    utc_start = datetime(start.year, start.month, start.day, 0, 0, 0) - timedelta(hours=8)
-                    utc_end = datetime(end.year, end.month, end.day, 23, 59, 59) - timedelta(hours=8)
-                    api_rules.append({"field": "receive_time", "option": "BTS", "values": [
-                        utc_start.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
-                        utc_end.strftime('%Y-%m-%dT%H:%M:%S.999Z')
-                    ]})
-            elif field == 'status':
-                status_map = {
-                    "待配载": "WAITSTOWED", "已配载": "WAITDELIVER",
-                    "已发车确认": "DEPARTRUECONFIR", "已签收": "SIGNEDIN",
-                    "已回单确认": "RECEIPTCONFIR"
-                }
-                status_vals = [status_map[s] for s in values if s in status_map]
-                if status_vals:
-                    api_rules.append({"field": "status_dk", "option": "IN", "values": status_vals})
-
+        api_rules = build_order_analysis_export_rules(data.get('rules', []))
         file_name = data.get('file_name', '订单导出.xlsx')
-
-        # page query 获取原始数据
-        orders_raw = query_stowage_orders(token, api_rules, size=9999)
-        if not orders_raw:
-            return jsonify({"success": False, "message": "无匹配数据"})
-
-        import openpyxl
-
-        wb = openpyxl.Workbook()
-        ws = wb.active
-
-        # 84列中文表头（与源网站导出完全一致）
-        COLUMN_HEADERS = [
-            "来源单号", "网点", "运输订单号", "配载单号", "车牌号",
-            "司机名称", "司机联系方式", "收货方名称", "业务员姓名", "业务类型",
-            "业务子类型", "配载单状态", "来源单创建日期", "收货地址", "收货联系人",
-            "收货联系人电话", "应当到货时间", "要求到货时间", "物流组织", "配载时间",
-            "发车时间", "签收时间", "签收人", "签收登记人", "配载总重量",
-            "客户名称", "签收重量", "订单总重量", "装货重量", "退货重量",
-            "超损耗重量", "发货地址", "发货方名称", "附件", "签收附件",
-            "到达附件", "供应商名称", "回单时间", "客户编号", "签单时效",
-            "签收来源", "是否让售", "船运船号", "船运箱号", "订单类型",
-            "发货仓库", "是否需要审核", "是否来源云载", "收货人", "收货人电话",
-            "过账日期", "签收状态", "客户组", "发货区域", "收货区域",
-            "是否寄出", "是否过账", "物料描述", "是否换标", "寄出时间",
-            "货物是否在途", "包装物件数", "物料名称", "销售组织", "客户等级",
-            "物流是否准时", "客户时效是否达成", "提货单号", "id", "回单状态",
-            "来源系统", "收货区域省份", "收货区域城市", "收货区域区县", "预计到厂时间",
-            "承运商", "运输方式", "承运商", "收货园区编号", "卸货到达",
-            "收货园区预约单号", "车辆类型", "是否需要卸货预约", "客户编号"
-        ]
-
-        # 对应字段码（前68个与EXPORT_SORT_FIELDS一致，后续为API自动追加字段）
-        FIELD_CODES = EXPORT_SORT_FIELDS + [
-            "id", "receipt_status", "source_system", "province_id", "city_id",
-            "receive_district_code", "exe_delivery_note_b.expect_date_arrival",
-            "car_type", "exe_pur_order_b.transport_mode", "car_type",
-            "receive_park_code", "unload_arrive", "receive_park_order_no",
-            "car_type", "discharge_flag", "exe_pur_order_b.customer_no"
-        ]
-
-        # 写表头
-        for col, header in enumerate(COLUMN_HEADERS, 1):
-            ws.cell(row=1, column=col, value=header)
-
-        # 字段值提取器
-        def get_field_value(obj, field_path):
-            parts = field_path.split('.')
-            val = obj
-            for p in parts:
-                if isinstance(val, dict):
-                    val = val.get(p)
-                else:
-                    return None
-            return val
-
-        # 需要格式化的时间字段
-        TIME_FIELDS = {'created_date', 'start_time', 'sent_out_date', 'receive_time',
-                       'delivery_date', 'expected_arrival_date', 'posting_date',
-                       'exe_pur_order_b.order_date', 'exe_delivery_note_b.expect_date_arrival'}
-
-        for row_idx, order in enumerate(orders_raw, 2):
-            for col_idx, field_code in enumerate(FIELD_CODES, 1):
-                val = get_field_value(order, field_code)
-                if val is None:
-                    continue
-                if isinstance(val, (dict, list)):
-                    val = json.dumps(val, ensure_ascii=False)
-                elif field_code in TIME_FIELDS and isinstance(val, str) and 'T' in val:
-                    try:
-                        dt_utc = datetime.fromisoformat(val.replace("Z", "+00:00"))
-                        dt_bj = dt_utc + timedelta(hours=8)
-                        val = dt_bj.strftime("%Y-%m-%d %H:%M:%S")
-                    except:
-                        pass
-                ws.cell(row=row_idx, column=col_idx, value=val)
-
-        # 保存文件
-        safe_name = re.sub(r'[\\/:*?"<>|]', '_', file_name)
-        save_path = os.path.join(SAVE_DIR, safe_name)
-        if os.path.exists(save_path):
-            base, ext = os.path.splitext(safe_name)
-            for n in range(1, 100):
-                alt = f"{base} ({n}){ext}"
-                alt_path = os.path.join(SAVE_DIR, alt)
-                if not os.path.exists(alt_path):
-                    save_path = alt_path
-                    safe_name = alt
-                    break
-        try:
-            wb.save(save_path)
-            return jsonify({"success": True, "filename": safe_name, "path": save_path})
-        except PermissionError:
-            return jsonify({"success": False, "message": f"文件被占用: {safe_name}，请关闭已打开的同名文件"})
-
+        task_id = submit_order_analysis_export(token, api_rules)
+        file_key, source_name = poll_order_analysis_export(token, task_id)
+        save_path = download_order_analysis_export_file(token, file_key, file_name or source_name)
+        return jsonify({"success": True, "filename": os.path.basename(save_path), "path": save_path})
+    except PermissionError:
+        return jsonify({"success": False, "message": "文件被占用，请关闭已打开的同名文件"})
     except Exception as e:
         print(f"[ERROR] api_order_analysis_export: {e}")
         import traceback
