@@ -52,6 +52,9 @@ ACCOUNTS = {
 }
 CURRENT_ACCOUNT_KEY = "wangyou"
 account_lock = threading.Lock()
+account_generation = 0
+account_refresh_lock = threading.Lock()
+account_refresh_in_progress = False
 
 # 保留兼容旧代码/测试的常量名
 MY_ACCOUNT = ACCOUNTS["wangyou"]["account"]
@@ -436,13 +439,13 @@ def _sess():
 _token_cache = {"token": None, "expire_time": 0}
 _token_lock = threading.Lock()
 
-def get_token():
+def get_token(account_key=None):
     """获取缓存的token，未过期直接复用"""
     with _token_lock:
         now = time.time()
         if _token_cache["token"] and now < _token_cache["expire_time"]:
             return _token_cache["token"]
-        token = login()
+        token = login(account_key)
         if token:
             _token_cache["token"] = token
             _token_cache["expire_time"] = now + 1800
@@ -474,6 +477,20 @@ def get_current_account_info():
         key = CURRENT_ACCOUNT_KEY
     cfg = get_account_config(key)
     return {"account_key": key, "label": cfg["label"]}
+
+
+def get_current_account_state():
+    """返回当前普通模块账号及版本，用于刷新写入前校验。"""
+    with account_lock:
+        return CURRENT_ACCOUNT_KEY, account_generation
+
+
+def is_account_generation_current(account_key, generation):
+    """判断刷新结果是否仍属于当前账号版本。"""
+    if generation is None:
+        return True
+    with account_lock:
+        return CURRENT_ACCOUNT_KEY == account_key and account_generation == generation
 
 
 def login(account_key=None):
@@ -1438,16 +1455,20 @@ def query_weekly_orders_by_day(token):
 
 
 # ====================== 数据刷新 ======================
-def refresh_all_data():
+def refresh_all_data(account_key=None, generation=None):
     """全局刷新 - 使用并行查询优化速度，返回是否成功"""
     global cache_data
     try:
         from time import perf_counter
+        if account_key is None or generation is None:
+            current_key, current_generation = get_current_account_state()
+            account_key = account_key or current_key
+            generation = current_generation if generation is None else generation
         t0 = perf_counter()
-        print(f"[{datetime.now()}] 开始刷新数据... (省份: {AUTO_REGIONS} | 网点: {SELECTED_NETWORKS})")
+        print(f"[{datetime.now()}] 开始刷新数据... (账号: {account_key} | 省份: {AUTO_REGIONS} | 网点: {SELECTED_NETWORKS})")
 
         t_login_start = perf_counter()
-        token = get_token()
+        token = get_token(account_key)
         print(f"  [计时] 登录耗时: {perf_counter() - t_login_start:.2f}s")
         if not token:
             print("登录失败，跳过本次刷新")
@@ -1498,6 +1519,9 @@ def refresh_all_data():
                     print(f"查询 {key} 失败: {e}")
                     results[key] = KEY_FALLBACKS.get(key, {})
 
+        if not is_account_generation_current(account_key, generation):
+            print(f"[{datetime.now()}] 丢弃过期账号刷新结果 (账号: {account_key}, generation: {generation})")
+            return False
         with cache_lock:
             cache_data.update(results)
             cache_data["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1586,6 +1610,28 @@ def api_version():
     })
 
 
+def schedule_account_refresh(account_key, generation):
+    """账号切换后串行触发全量刷新，避免重复启动并发刷新线程。"""
+    global account_refresh_in_progress
+    with account_refresh_lock:
+        if account_refresh_in_progress:
+            return False
+        account_refresh_in_progress = True
+
+    def refresh_after_switch():
+        global account_refresh_in_progress
+        try:
+            refresh_all_data(account_key=account_key, generation=generation)
+        except Exception as exc:
+            print(f"[{datetime.now()}] 切换账号后刷新异常: {exc}")
+        finally:
+            with account_refresh_lock:
+                account_refresh_in_progress = False
+
+    threading.Thread(target=refresh_after_switch, daemon=True).start()
+    return True
+
+
 @app.route('/api/current-account')
 def api_current_account():
     info = get_current_account_info()
@@ -1593,22 +1639,25 @@ def api_current_account():
 
 
 @app.route('/api/account-switch', methods=['POST'])
+@require_update_request_allowed
 def api_account_switch():
-    global CURRENT_ACCOUNT_KEY
+    global CURRENT_ACCOUNT_KEY, account_generation
+    data = request.get_json(silent=True) or {}
+    requested_key = data.get("account_key")
+    if requested_key is not None and requested_key not in ACCOUNTS:
+        return jsonify({"success": False, "message": "账号不存在"}), 400
+
     with account_lock:
-        CURRENT_ACCOUNT_KEY = "qitao" if CURRENT_ACCOUNT_KEY == "wangyou" else "wangyou"
+        CURRENT_ACCOUNT_KEY = requested_key or ("qitao" if CURRENT_ACCOUNT_KEY == "wangyou" else "wangyou")
+        account_generation += 1
         key = CURRENT_ACCOUNT_KEY
+        generation = account_generation
     cfg = get_account_config(key)
-    _token_cache["token"] = None
-    _token_cache["expire_time"] = 0
+    with _token_lock:
+        _token_cache["token"] = None
+        _token_cache["expire_time"] = 0
 
-    def refresh_after_switch():
-        try:
-            refresh_all_data()
-        except Exception as exc:
-            print(f"[{datetime.now()}] 切换账号后刷新异常: {exc}")
-
-    threading.Thread(target=refresh_after_switch, daemon=True).start()
+    schedule_account_refresh(key, generation)
     return jsonify({"success": True, "account_key": key, "label": cfg["label"]})
 
 

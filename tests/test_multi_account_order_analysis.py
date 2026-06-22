@@ -1,4 +1,6 @@
 import importlib.util
+import threading
+import time
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "零担面板.py"
@@ -50,7 +52,7 @@ def test_account_switch_toggles_between_wangyou_and_qitao(monkeypatch):
     panel.CURRENT_ACCOUNT_KEY = "wangyou"
     panel._token_cache["token"] = "old-token"
     panel._token_cache["expire_time"] = 9999999999
-    monkeypatch.setattr(panel, "refresh_all_data", lambda: True)
+    monkeypatch.setattr(panel, "refresh_all_data", lambda *args, **kwargs: True)
 
     client = panel.app.test_client()
     first = client.post('/api/account-switch').get_json()
@@ -64,3 +66,82 @@ def test_account_switch_toggles_between_wangyou_and_qitao(monkeypatch):
     assert second["label"] == "王友小助手"
     assert panel._token_cache["token"] is None
     assert panel._token_cache["expire_time"] == 0
+
+
+def test_account_switch_clears_token_cache_under_token_lock(monkeypatch):
+    panel.CURRENT_ACCOUNT_KEY = "wangyou"
+    panel._token_cache["token"] = "old-token"
+    panel._token_cache["expire_time"] = 9999999999
+    monkeypatch.setattr(panel, "refresh_all_data", lambda *args, **kwargs: True)
+
+    panel._token_lock.acquire()
+    response_holder = {}
+
+    def call_switch():
+        response_holder["response"] = panel.app.test_client().post('/api/account-switch')
+
+    worker = threading.Thread(target=call_switch)
+    worker.start()
+    time.sleep(0.05)
+
+    assert panel._token_cache["token"] == "old-token"
+    assert panel._token_cache["expire_time"] == 9999999999
+
+    panel._token_lock.release()
+    worker.join(timeout=2)
+
+    assert response_holder["response"].status_code == 200
+    assert panel._token_cache["token"] is None
+    assert panel._token_cache["expire_time"] == 0
+
+
+def test_account_switch_explicit_account_key_is_idempotent(monkeypatch):
+    panel.CURRENT_ACCOUNT_KEY = "wangyou"
+    monkeypatch.setattr(panel, "refresh_all_data", lambda *args, **kwargs: True)
+
+    client = panel.app.test_client()
+    first = client.post('/api/account-switch', json={"account_key": "qitao"}).get_json()
+    second = client.post('/api/account-switch', json={"account_key": "qitao"}).get_json()
+
+    assert first["success"] is True
+    assert first["account_key"] == "qitao"
+    assert second["success"] is True
+    assert second["account_key"] == "qitao"
+    assert panel.CURRENT_ACCOUNT_KEY == "qitao"
+
+
+def test_account_switch_rejects_non_local_request(monkeypatch):
+    panel.CURRENT_ACCOUNT_KEY = "wangyou"
+    monkeypatch.setattr(panel, "refresh_all_data", lambda *args, **kwargs: True)
+
+    response = panel.app.test_client().post(
+        '/api/account-switch',
+        json={"account_key": "qitao"},
+        environ_base={"REMOTE_ADDR": "203.0.113.10"},
+    )
+
+    assert response.status_code == 403
+    assert panel.CURRENT_ACCOUNT_KEY == "wangyou"
+
+
+def test_repeated_account_switches_schedule_only_one_refresh(monkeypatch):
+    panel.CURRENT_ACCOUNT_KEY = "wangyou"
+    created_threads = []
+
+    class FakeThread:
+        def __init__(self, target, daemon):
+            self.target = target
+            self.daemon = daemon
+            created_threads.append(self)
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr(panel.threading, "Thread", FakeThread)
+
+    client = panel.app.test_client()
+    client.post('/api/account-switch', json={"account_key": "qitao"})
+    client.post('/api/account-switch', json={"account_key": "wangyou"})
+    client.post('/api/account-switch', json={"account_key": "qitao"})
+
+    assert len(created_threads) == 1
