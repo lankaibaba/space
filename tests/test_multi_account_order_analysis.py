@@ -39,6 +39,38 @@ def test_login_uses_selected_account_credentials(monkeypatch):
     assert captured["payload"]["password"] == "encrypted:123456"
 
 
+def test_get_token_does_not_reuse_qitao_cache_for_wangyou(monkeypatch):
+    login_calls = []
+
+    def fake_login(account_key=None):
+        login_calls.append(account_key)
+        return f"token-{account_key}"
+
+    panel._token_cache.clear()
+    monkeypatch.setattr(panel, "login", fake_login)
+
+    assert panel.get_token("qitao") == "token-qitao"
+    assert panel.get_token("wangyou") == "token-wangyou"
+    assert login_calls == ["qitao", "wangyou"]
+
+
+def test_get_token_caches_wangyou_and_qitao_separately(monkeypatch):
+    login_calls = []
+
+    def fake_login(account_key=None):
+        login_calls.append(account_key)
+        return f"token-{account_key}"
+
+    panel._token_cache.clear()
+    monkeypatch.setattr(panel, "login", fake_login)
+
+    assert panel.get_token("wangyou") == "token-wangyou"
+    assert panel.get_token("qitao") == "token-qitao"
+    assert panel.get_token("wangyou") == "token-wangyou"
+    assert panel.get_token("qitao") == "token-qitao"
+    assert login_calls == ["wangyou", "qitao"]
+
+
 def test_current_account_api_defaults_to_wangyou():
     panel.CURRENT_ACCOUNT_KEY = "wangyou"
     response = panel.app.test_client().get('/api/current-account')
@@ -50,8 +82,9 @@ def test_current_account_api_defaults_to_wangyou():
 
 def test_account_switch_toggles_between_wangyou_and_qitao(monkeypatch):
     panel.CURRENT_ACCOUNT_KEY = "wangyou"
-    panel._token_cache["token"] = "old-token"
-    panel._token_cache["expire_time"] = 9999999999
+    panel._token_cache.clear()
+    panel._token_cache["wangyou"] = {"token": "old-wangyou-token", "expire_time": 9999999999}
+    panel._token_cache["qitao"] = {"token": "old-qitao-token", "expire_time": 9999999999}
     monkeypatch.setattr(panel, "refresh_all_data", lambda *args, **kwargs: True)
 
     client = panel.app.test_client()
@@ -64,14 +97,13 @@ def test_account_switch_toggles_between_wangyou_and_qitao(monkeypatch):
     assert second["success"] is True
     assert second["account_key"] == "wangyou"
     assert second["label"] == "王友小助手"
-    assert panel._token_cache["token"] is None
-    assert panel._token_cache["expire_time"] == 0
+    assert panel._token_cache == {}
 
 
 def test_account_switch_clears_token_cache_under_token_lock(monkeypatch):
     panel.CURRENT_ACCOUNT_KEY = "wangyou"
-    panel._token_cache["token"] = "old-token"
-    panel._token_cache["expire_time"] = 9999999999
+    panel._token_cache.clear()
+    panel._token_cache["wangyou"] = {"token": "old-token", "expire_time": 9999999999}
     monkeypatch.setattr(panel, "refresh_all_data", lambda *args, **kwargs: True)
 
     panel._token_lock.acquire()
@@ -84,15 +116,14 @@ def test_account_switch_clears_token_cache_under_token_lock(monkeypatch):
     worker.start()
     time.sleep(0.05)
 
-    assert panel._token_cache["token"] == "old-token"
-    assert panel._token_cache["expire_time"] == 9999999999
+    assert panel._token_cache["wangyou"]["token"] == "old-token"
+    assert panel._token_cache["wangyou"]["expire_time"] == 9999999999
 
     panel._token_lock.release()
     worker.join(timeout=2)
 
     assert response_holder["response"].status_code == 200
-    assert panel._token_cache["token"] is None
-    assert panel._token_cache["expire_time"] == 0
+    assert panel._token_cache == {}
 
 
 def test_account_switch_explicit_account_key_is_idempotent(monkeypatch):

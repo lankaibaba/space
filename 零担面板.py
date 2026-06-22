@@ -437,19 +437,26 @@ def _sess():
 
 
 # ====================== Token缓存 ======================
-_token_cache = {"token": None, "expire_time": 0}
+_token_cache = {}
 _token_lock = threading.Lock()
 
 def get_token(account_key=None):
-    """获取缓存的token，未过期直接复用"""
+    """按账号获取缓存的token，未过期直接复用。"""
+    actual_account_key = account_key
+    if actual_account_key is None:
+        with account_lock:
+            actual_account_key = CURRENT_ACCOUNT_KEY
+    actual_account_key = actual_account_key if actual_account_key in ACCOUNTS else "wangyou"
+
     with _token_lock:
         now = time.time()
-        if _token_cache["token"] and now < _token_cache["expire_time"]:
-            return _token_cache["token"]
-        token = login(account_key)
+        account_cache = _token_cache.setdefault(actual_account_key, {"token": None, "expire_time": 0})
+        if account_cache["token"] and now < account_cache["expire_time"]:
+            return account_cache["token"]
+        token = login(actual_account_key)
         if token:
-            _token_cache["token"] = token
-            _token_cache["expire_time"] = now + 1800
+            account_cache["token"] = token
+            account_cache["expire_time"] = now + 1800
         return token
 
 
@@ -1662,8 +1669,7 @@ def api_account_switch():
         generation = account_generation
     cfg = get_account_config(key)
     with _token_lock:
-        _token_cache["token"] = None
-        _token_cache["expire_time"] = 0
+        _token_cache.clear()
 
     schedule_account_refresh(key, generation)
     return jsonify({"success": True, "account_key": key, "label": cfg["label"]})
