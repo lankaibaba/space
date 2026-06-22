@@ -4014,11 +4014,19 @@
                         showAnalysisStatus('导出失败: 未生成下载文件');
                         setTimeout(hideAnalysisStatus, 3000);
                     } else {
-                        downloads.forEach((download, index) => {
+                        for (const item of downloads) {
+                            if (!item.download_url) {
+                                showAnalysisStatus('导出失败: 下载链接缺失');
+                                setTimeout(hideAnalysisStatus, 3000);
+                                setBtnLoading('analysisExportBtn', false, '', '导出');
+                                return;
+                            }
+                        }
+                        downloads.forEach((item, index) => {
                             setTimeout(() => {
                                 const link = document.createElement('a');
-                                link.href = download.url || ('/api/order-analysis/export-download?token=' + encodeURIComponent(download.token));
-                                link.download = download.file_name || '';
+                                link.href = item.download_url;
+                                link.download = item.file_name || '';
                                 link.style.display = 'none';
                                 document.body.appendChild(link);
                                 link.click();
