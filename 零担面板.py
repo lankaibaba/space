@@ -1586,6 +1586,32 @@ def api_version():
     })
 
 
+@app.route('/api/current-account')
+def api_current_account():
+    info = get_current_account_info()
+    return jsonify({"success": True, **info})
+
+
+@app.route('/api/account-switch', methods=['POST'])
+def api_account_switch():
+    global CURRENT_ACCOUNT_KEY
+    with account_lock:
+        CURRENT_ACCOUNT_KEY = "qitao" if CURRENT_ACCOUNT_KEY == "wangyou" else "wangyou"
+        key = CURRENT_ACCOUNT_KEY
+    cfg = get_account_config(key)
+    _token_cache["token"] = None
+    _token_cache["expire_time"] = 0
+
+    def refresh_after_switch():
+        try:
+            refresh_all_data()
+        except Exception as exc:
+            print(f"[{datetime.now()}] 切换账号后刷新异常: {exc}")
+
+    threading.Thread(target=refresh_after_switch, daemon=True).start()
+    return jsonify({"success": True, "account_key": key, "label": cfg["label"]})
+
+
 @app.route('/api/check-update')
 @require_update_request_allowed
 def api_check_update():
