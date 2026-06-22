@@ -210,3 +210,52 @@ def test_account_refresh_processes_latest_pending_switch(monkeypatch):
     assert len(created_threads) == 1
     assert calls == [("qitao", 1), ("qitao", 3)]
     assert panel.account_refresh_in_progress is False
+
+
+def test_split_order_analysis_networks_routes_jiangnan_jiangbei_to_qitao():
+    result = panel.split_order_analysis_networks(["零担", "江南", "江北", "讯服"])
+
+    assert result == {
+        "wangyou": ["零担", "讯服"],
+        "qitao": ["江南", "江北"],
+    }
+
+
+def test_query_order_analysis_merges_two_accounts(monkeypatch):
+    login_calls = []
+    query_calls = []
+
+    monkeypatch.setattr(panel, "login", lambda account_key=None: login_calls.append(account_key) or f"token-{account_key}")
+
+    def fake_query(token, rules, size=5000):
+        query_calls.append((token, rules))
+        if token == "token-wangyou":
+            return [{"id": "1", "source_order_no": "WY001", "stowage_all_weight": 10, "k_contract_line_a": {"network_show": "零担", "network": panel.ALL_NETWORKS["零担"]}}]
+        if token == "token-qitao":
+            return [{"id": "2", "source_order_no": "QT001", "stowage_all_weight": 20, "k_contract_line_a": {"network_show": "江南", "network": panel.ALL_NETWORKS["江南"]}}]
+        return []
+
+    monkeypatch.setattr(panel, "query_stowage_orders", fake_query)
+
+    result = panel.query_order_analysis_orders({"networks": ["零担", "江南"]})
+
+    assert [o["source_order_no"] for o in result["orders"]] == ["WY001", "QT001"]
+    assert result["sources"] == {"wangyou": 1, "qitao": 1}
+    assert result["orders"][0]["source_account"] == "wangyou"
+    assert result["orders"][1]["source_account"] == "qitao"
+    assert login_calls == ["wangyou", "qitao"]
+
+
+def test_order_analysis_query_api_returns_sources(monkeypatch):
+    monkeypatch.setattr(panel, "query_order_analysis_orders", lambda data: {
+        "orders": [{"source_order_no": "A", "stowage_weight": 3, "source_account": "wangyou"}],
+        "sources": {"wangyou": 1}
+    })
+
+    response = panel.app.test_client().post('/api/order-analysis/query', json={"networks": ["零担"]})
+    data = response.get_json()
+
+    assert data["success"] is True
+    assert data["total"] == 1
+    assert data["total_weight"] == 3
+    assert data["sources"] == {"wangyou": 1}

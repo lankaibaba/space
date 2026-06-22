@@ -2405,10 +2405,12 @@ def parse_stowage_order(order):
         "carrier_phone": order.get("carrier_phone"),
         "salesman_name": order.get("salesman_name"),
         "stowage_weight": float(order.get("stowage_all_weight", 0) or 0),
+        "stowage_volume": float(order.get("stowage_all_volume", 0) or 0),
         "signed_weight": float(order.get("signed_weight", 0) or 0),
         "logistics_time": order.get("logistics_time_show"),
         "customer_prescription": order.get("customer_prescription_show"),
         "material_name": order.get("material_name"),
+        "goods_name": order.get("material_name"),
         "type_code": order.get("type_code_show"),
         "sub_type_code": order.get("sub_type_code_show"),
         "customer": order.get("exe_pur_order_b", {}).get("customer"),
@@ -2417,78 +2419,101 @@ def parse_stowage_order(order):
     }
 
 
+QITAO_NETWORKS = {"江南", "江北"}
+
+
+def split_order_analysis_networks(networks):
+    """订单分析固定按网点拆分账号：江南/江北归齐涛，其余归王友。"""
+    result = {"wangyou": [], "qitao": []}
+    for name in networks or []:
+        if name not in ALL_NETWORKS:
+            continue
+        key = "qitao" if name in QITAO_NETWORKS else "wangyou"
+        result[key].append(name)
+    return {k: v for k, v in result.items() if v}
+
+
+def bj_date_to_utc_range(start_value, end_value):
+    start = datetime.strptime(start_value[:10], '%Y-%m-%d')
+    end = datetime.strptime(end_value[:10], '%Y-%m-%d')
+    utc_start = datetime(start.year, start.month, start.day, 0, 0, 0) - timedelta(hours=8)
+    utc_end = datetime(end.year, end.month, end.day, 23, 59, 59) - timedelta(hours=8)
+    return [utc_start.strftime('%Y-%m-%dT%H:%M:%S.000Z'), utc_end.strftime('%Y-%m-%dT%H:%M:%S.999Z')]
+
+
+def build_order_analysis_rules(data, network_names=None):
+    """构建订单分析查询/导出共用筛选规则。"""
+    rules = []
+    if network_names:
+        network_ids = [ALL_NETWORKS[n] for n in network_names if n in ALL_NETWORKS]
+        if network_ids:
+            rules.append({"field": "k_contract_line_a.network", "option": "IN", "values": network_ids})
+
+    created_start = data.get('created_start')
+    created_end = data.get('created_end')
+    if created_start and created_end:
+        rules.append({"field": "exe_pur_order_b.order_date", "option": "BTS", "values": bj_date_to_utc_range(created_start, created_end)})
+
+    sign_start = data.get('sign_start')
+    sign_end = data.get('sign_end')
+    if sign_start and sign_end:
+        rules.append({"field": "receive_time", "option": "BTS", "values": bj_date_to_utc_range(sign_start, sign_end)})
+
+    statuses = data.get('statuses')
+    if statuses and isinstance(statuses, list):
+        status_map = {
+            "待配载": "WAITSTOWED",
+            "已配载": "WAITDELIVER",
+            "已发车确认": "DEPARTRUECONFIR",
+            "已签收": "SIGNEDIN",
+            "已回单确认": "RECEIPTCONFIR"
+        }
+        status_vals = [status_map[s] for s in statuses if s in status_map]
+        if status_vals:
+            rules.append({"field": "status_dk", "option": "IN", "values": status_vals})
+    return rules
+
+
+def query_order_analysis_orders(data):
+    """按账号分流查询订单分析数据，并归一化合并。"""
+    networks = data.get('networks')
+    if networks and isinstance(networks, list) and len(networks) > 0:
+        split = split_order_analysis_networks(networks)
+    else:
+        split = {"wangyou": [n for n in ALL_NETWORKS if n not in QITAO_NETWORKS], "qitao": [n for n in ALL_NETWORKS if n in QITAO_NETWORKS]}
+
+    merged = []
+    sources = {}
+    for account_key, account_networks in split.items():
+        token = login(account_key)
+        if not token:
+            label = get_account_config(account_key)["label"]
+            raise RuntimeError(f"{label}登录失败")
+        rules = build_order_analysis_rules(data, account_networks)
+        raw_orders = query_stowage_orders(token, rules)
+        parsed = []
+        for item in raw_orders:
+            order = parse_stowage_order(item)
+            order["source_account"] = account_key
+            parsed.append(order)
+        sources[account_key] = len(parsed)
+        merged.extend(parsed)
+    return {"orders": merged, "sources": sources}
+
+
 @app.route('/api/order-analysis/query', methods=['POST'])
 def api_order_analysis_query():
-    """订单分析-查询"""
+    """订单分析-查询：按网点双账号分流并合并。"""
     try:
         data = request.get_json(silent=True) or {}
-        token = get_token()
-        if not token:
-            return jsonify({"success": False, "message": "登录失败"})
-
-        rules = []
-
-        # 网点筛选（多选）
-        networks = data.get('networks')
-        if networks and isinstance(networks, list) and len(networks) > 0:
-            network_ids = [ALL_NETWORKS[n] for n in networks if n in ALL_NETWORKS]
-            if network_ids:
-                rules.append({"field": "k_contract_line_a.network", "option": "IN", "values": network_ids})
-
-        # 北京时间→UTC 转换辅助函数
-        def bj_date_to_utc(date_str, is_end=False):
-            """将前端日期字符串（北京时间）转为UTC时间戳，与项目统一模式一致"""
-            date_part = date_str[:10]
-            dt = datetime.strptime(date_part, '%Y-%m-%d')
-            if is_end:
-                bj_utc = datetime(dt.year, dt.month, dt.day, 23, 59, 59) - timedelta(hours=8)
-                return bj_utc.strftime('%Y-%m-%dT%H:%M:%S.999Z')
-            else:
-                bj_utc = datetime(dt.year, dt.month, dt.day, 0, 0, 0) - timedelta(hours=8)
-                return bj_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-
-        # 创建时间范围（来源单创建时间）
-        created_start = data.get('created_start')
-        created_end = data.get('created_end')
-        if created_start and created_end:
-            rules.append({"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
-                bj_date_to_utc(created_start, is_end=False),
-                bj_date_to_utc(created_end, is_end=True)
-            ]})
-
-        # 签收日期范围
-        sign_start = data.get('sign_start')
-        sign_end = data.get('sign_end')
-        if sign_start and sign_end:
-            rules.append({"field": "receive_time", "option": "BTS", "values": [
-                bj_date_to_utc(sign_start, is_end=False),
-                bj_date_to_utc(sign_end, is_end=True)
-            ]})
-
-        # 物流时效 - 注意：物流时效字段不支持API直接筛选，需要前端过滤
-
-        # 配载单状态（多选）
-        statuses = data.get('statuses')
-        if statuses and isinstance(statuses, list) and len(statuses) > 0:
-            status_map = {
-                "待配载": "WAITSTOWED",
-                "已配载": "WAITDELIVER",
-                "已发车确认": "DEPARTRUECONFIR",
-                "已签收": "SIGNEDIN",
-                "已回单确认": "RECEIPTCONFIR"
-            }
-            status_vals = [status_map[s] for s in statuses if s in status_map]
-            if status_vals:
-                rules.append({"field": "status_dk", "option": "IN", "values": status_vals})
-
-        orders_raw = query_stowage_orders(token, rules)
-        orders = [parse_stowage_order(o) for o in orders_raw]
-        
+        result = query_order_analysis_orders(data)
+        orders = result["orders"]
         return jsonify({
             "success": True,
             "data": orders,
             "total": len(orders),
-            "total_weight": round(sum(o["stowage_weight"] for o in orders), 2)
+            "total_weight": round(sum(o.get("stowage_weight", 0) for o in orders), 2),
+            "sources": result.get("sources", {})
         })
     except Exception as e:
         print(f"[ERROR] api_order_analysis_query: {e}")
