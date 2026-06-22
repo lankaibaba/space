@@ -290,3 +290,40 @@ def test_order_analysis_query_api_returns_failure_when_helper_raises(monkeypatch
     assert data["success"] is False
     assert "齐涛小助手" in data["message"]
     assert "查询失败" in data["message"]
+
+
+def test_query_stowage_orders_strict_raises_on_business_error_without_content(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"status": "error", "message": "token expired"}
+
+    class FakeSession:
+        def post(self, url, json, headers, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr(panel, "_sess", lambda: FakeSession())
+
+    with pytest.raises(RuntimeError) as exc_info:
+        panel.query_stowage_orders_strict("token", [])
+
+    assert "token expired" in str(exc_info.value)
+
+
+def test_query_stowage_orders_strict_returns_empty_list_for_real_no_data(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"content": []}
+
+    class FakeSession:
+        def post(self, url, json, headers, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr(panel, "_sess", lambda: FakeSession())
+
+    assert panel.query_stowage_orders_strict("token", []) == []

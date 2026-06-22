@@ -2385,7 +2385,13 @@ def query_stowage_orders_strict(token, rules, size=5000):
     data = resp.json()
     if not isinstance(data, dict):
         raise RuntimeError("配载单查询响应格式异常")
-    return data.get("content", [])
+    if "content" not in data:
+        message = data.get("message") or data.get("msg") or data.get("status") or "配载单查询响应缺少content"
+        raise RuntimeError(str(message))
+    content = data.get("content")
+    if not isinstance(content, list):
+        raise RuntimeError("配载单查询响应content格式异常")
+    return content
 
 
 def parse_stowage_order(order):
