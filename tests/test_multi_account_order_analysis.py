@@ -379,3 +379,66 @@ def test_convert_export_rules_to_query_data():
     assert data["sign_start"] == "2026-06-03"
     assert data["sign_end"] == "2026-06-04"
     assert data["statuses"] == ["已签收"]
+
+
+def test_poll_order_analysis_export_raises_business_error(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"status": "error", "message": "token expired"}
+
+    class FakeSession:
+        def get(self, url, headers, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr(panel, "_sess", lambda: FakeSession())
+
+    with pytest.raises(RuntimeError) as exc_info:
+        panel.poll_order_analysis_export("token", "task-1")
+
+    assert "token expired" in str(exc_info.value)
+
+
+def test_poll_order_analysis_export_requires_file_key(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "statusEk": "SUCCEED",
+                "outputParam": {"content": '{"attachment":{"attachFile":[{"name":"订单分析.xlsx"}]}}'},
+            }
+
+    class FakeSession:
+        def get(self, url, headers, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr(panel, "_sess", lambda: FakeSession())
+
+    with pytest.raises(RuntimeError) as exc_info:
+        panel.poll_order_analysis_export("token", "task-1")
+
+    assert "文件key" in str(exc_info.value)
+
+
+def test_poll_order_analysis_export_returns_file_key_and_name(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "statusEk": "SUCCEED",
+                "outputParam": {"content": '{"attachment":{"attachFile":[{"key":"file-key-1","name":"订单分析.xlsx"}]}}'},
+            }
+
+    class FakeSession:
+        def get(self, url, headers, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr(panel, "_sess", lambda: FakeSession())
+
+    assert panel.poll_order_analysis_export("token", "task-1") == ("file-key-1", "订单分析.xlsx")

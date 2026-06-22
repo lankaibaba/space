@@ -2696,6 +2696,40 @@ def submit_order_analysis_export(token, rules):
     return task_id
 
 
+def get_order_analysis_task_error(task_data):
+    """识别 queued-task 业务错误，避免把授权/业务失败误报为轮询超时。"""
+    if not isinstance(task_data, dict):
+        return "导出任务响应格式异常"
+
+    error_statuses = {"ERROR", "FAIL", "FAILED", "FAILURE"}
+    candidates = []
+    for key in ("status", "state", "statusEk"):
+        if task_data.get(key) is not None:
+            candidates.append(task_data.get(key))
+    data = task_data.get("data")
+    if isinstance(data, dict) and data.get("status") is not None:
+        candidates.append(data.get("status"))
+
+    for value in candidates:
+        status_text = str(value).strip()
+        if status_text.upper() in error_statuses:
+            return (
+                task_data.get("message")
+                or task_data.get("msg")
+                or task_data.get("error")
+                or (data.get("message") if isinstance(data, dict) else None)
+                or (data.get("msg") if isinstance(data, dict) else None)
+                or (data.get("error") if isinstance(data, dict) else None)
+                or status_text
+            )
+
+    has_normal_task_field = any(key in task_data for key in ("statusEk", "outputParam", "data"))
+    message = task_data.get("message") or task_data.get("msg") or task_data.get("error")
+    if message and not has_normal_task_field:
+        return message
+    return None
+
+
 def poll_order_analysis_export(token, task_id, max_wait=180):
     headers = get_order_analysis_export_headers(token)
     start_time = time.time()
@@ -2703,6 +2737,9 @@ def poll_order_analysis_export(token, task_id, max_wait=180):
         resp = _sess().get(QUEUED_TASK_URL.format(task_id), headers=headers, timeout=15)
         resp.raise_for_status()
         task_data = resp.json()
+        task_error = get_order_analysis_task_error(task_data)
+        if task_error:
+            raise RuntimeError(str(task_error))
         status = task_data.get("statusEk", "")
         if status == "SUCCEED":
             content_text = task_data.get("outputParam", {}).get("content", "")
@@ -2710,7 +2747,10 @@ def poll_order_analysis_export(token, task_id, max_wait=180):
             files = content.get("attachment", {}).get("attachFile", [])
             if not files:
                 raise RuntimeError("导出任务完成但没有生成文件")
-            return files[0].get("key"), files[0].get("name", "订单导出.xlsx")
+            file_key = files[0].get("key")
+            if not file_key:
+                raise RuntimeError("导出任务成功但缺少文件key")
+            return file_key, files[0].get("name", "订单导出.xlsx")
         if status in ("FAILED", "ERROR"):
             raise RuntimeError("导出任务失败")
         time.sleep(3)
