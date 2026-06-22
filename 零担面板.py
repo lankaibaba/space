@@ -97,7 +97,7 @@ KPI_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal
 KPI_DETAIL_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal/supplier_abnormal/375549423855472640"
 
 # ====================== 【程序版本与自动更新】 ======================
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 GITHUB_REPO = "lankaibaba/space"
 UPDATE_ASSET_NAME = "王友小助手.exe"
 GITHUB_RELEASE_ASSET_NAMES = {UPDATE_ASSET_NAME, "default.exe"}
