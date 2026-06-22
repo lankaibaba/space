@@ -38,8 +38,24 @@ app = Flask(__name__, static_folder=os.path.join(BASE_DIR, 'static'))
 CORS(app)
 
 # ====================== 【核心配置】 ======================
-MY_ACCOUNT = "V0013992"
-MY_PASSWORD = "Xs123456"
+ACCOUNTS = {
+    "wangyou": {
+        "label": "王友小助手",
+        "account": "V0013992",
+        "password": "Xs123456",
+    },
+    "qitao": {
+        "label": "齐涛小助手",
+        "account": "V0006384",
+        "password": "123456",
+    },
+}
+CURRENT_ACCOUNT_KEY = "wangyou"
+account_lock = threading.Lock()
+
+# 保留兼容旧代码/测试的常量名
+MY_ACCOUNT = ACCOUNTS["wangyou"]["account"]
+MY_PASSWORD = ACCOUNTS["wangyou"]["password"]
 PUBLIC_KEY = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCctQTweXAiaQ3ct5bhj6nyisOQiGmgC/hUdK+QO9I9DudcQSUMxIXvMtpiogB9RWkAUC4b86x7SiGD6aCp7PbTspd5fLf8F6LUIj/BtmktQq7JNsShjAWBxCkE49HIIvPvl9rt8lO7MkgS2vUT04tEYeu/62ltOc3BljJXoPC4pQIDAQAB"
 
 AUTO_REGIONS = ["湖南", "湖北", "新疆", "河北", "安徽"]
@@ -444,11 +460,28 @@ def rsa_encrypt(password):
     return base64.b64encode(encrypted).decode()
 
 
-def login():
+def get_account_config(account_key=None):
+    """获取账号配置，缺省使用当前普通模块账号。"""
+    if account_key is None:
+        with account_lock:
+            account_key = CURRENT_ACCOUNT_KEY
+    return ACCOUNTS.get(account_key) or ACCOUNTS["wangyou"]
+
+
+def get_current_account_info():
+    """返回当前普通模块账号信息。"""
+    with account_lock:
+        key = CURRENT_ACCOUNT_KEY
+    cfg = get_account_config(key)
+    return {"account_key": key, "label": cfg["label"]}
+
+
+def login(account_key=None):
     try:
+        cfg = get_account_config(account_key)
         payload = {
-            "name": MY_ACCOUNT,
-            "password": rsa_encrypt(MY_PASSWORD),
+            "name": cfg["account"],
+            "password": rsa_encrypt(cfg["password"]),
             "rememberMe": True,
             "imageCode": None,
             "loginBindingParameters": {}
@@ -463,7 +496,7 @@ def login():
         if data.get("status") == "login":
             return data["token"]
         return None
-    except:
+    except Exception:
         return None
 
 
