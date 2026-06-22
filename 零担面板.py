@@ -56,6 +56,8 @@ account_generation = 0
 account_refresh_lock = threading.Lock()
 account_refresh_in_progress = False
 account_refresh_pending = None
+order_analysis_export_files = {}
+order_analysis_export_lock = threading.Lock()
 
 # 保留兼容旧代码/测试的常量名
 MY_ACCOUNT = ACCOUNTS["wangyou"]["account"]
@@ -86,7 +88,8 @@ BASE_URL = "https://sdm.etransfar.com/jbl/api"
 LOGIN_URL = "https://sdm.etransfar.com/jbl/api/login/?_allow_anonymous=true"
 QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/purchase_order/page"
 RECEIPT_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/receive_management/page"
-ORDER_ANALYSIS_ASYNC_EXPORT_URL = "https://sdm.etransfar.com/jbl/api/module-data/receive_management/async-export"
+RECEIPT_EXPORT_URL = "https://sdm.etransfar.com/jbl/api/module-data/receive_management/async-export"
+ORDER_ANALYSIS_ASYNC_EXPORT_URL = RECEIPT_EXPORT_URL
 QUEUED_TASK_URL = "https://sdm.etransfar.com/jbl/api/queued-task/my/{}"
 FILE_AUTH_CODE_URL = "https://sdm.etransfar.com/jbl/api/file/get-temporary-auth-code?key={}"
 FILE_DOWNLOAD_URL = "https://sdm.etransfar.com/jbl/api/file/download/{}?authCode={}"
@@ -2714,7 +2717,17 @@ def poll_order_analysis_export(token, task_id, max_wait=180):
     raise TimeoutError("导出任务超时")
 
 
-def download_order_analysis_export_file(token, file_key, filename):
+def download_order_analysis_export_file(account_key, rules, file_prefix):
+    """按账号调用源系统 async-export 并下载订单分析 Excel 到本地。"""
+    label = get_account_config(account_key)["label"]
+    token = login(account_key)
+    if not token:
+        raise RuntimeError(f"{label}登录失败")
+
+    task_id = submit_order_analysis_export(token, rules)
+    file_key, source_name = poll_order_analysis_export(token, task_id)
+    filename = f"{file_prefix}.xlsx" if file_prefix else source_name
+
     headers = get_order_analysis_export_headers(token)
     auth_resp = _sess().get(FILE_AUTH_CODE_URL.format(file_key), headers=headers, timeout=15)
     auth_resp.raise_for_status()
@@ -2725,7 +2738,7 @@ def download_order_analysis_export_file(token, file_key, filename):
     download_resp = _sess().get(FILE_DOWNLOAD_URL.format(file_key, auth_code), headers=headers, timeout=60)
     download_resp.raise_for_status()
 
-    safe_name = re.sub(r'[\\/:*?"<>|]', '_', filename or "订单导出.xlsx")
+    safe_name = re.sub(r'[\\/:*?"<>|]', '_', filename or source_name or "订单导出.xlsx")
     save_path = os.path.join(SAVE_DIR, safe_name)
     if os.path.exists(save_path):
         base, ext = os.path.splitext(safe_name)
@@ -2734,74 +2747,85 @@ def download_order_analysis_export_file(token, file_key, filename):
             alt_path = os.path.join(SAVE_DIR, alt)
             if not os.path.exists(alt_path):
                 save_path = alt_path
-                safe_name = alt
                 break
     with open(save_path, "wb") as f:
         f.write(download_resp.content)
     return save_path
 
 
-def build_order_analysis_export_rules(frontend_rules):
-    api_rules = []
-    for rule in frontend_rules:
+def convert_export_rules_to_query_data(frontend_rules):
+    """把前端导出 rules 转成订单分析查询/导出共用 data 结构。"""
+    data = {}
+    for rule in frontend_rules or []:
         field = rule.get('field', '')
         values = rule.get('values', [])
         if field == 'network':
-            network_ids = [ALL_NETWORKS[n] for n in values if n in ALL_NETWORKS]
-            if network_ids:
-                api_rules.append({"field": "k_contract_line_a.network", "option": "IN", "values": network_ids})
+            data['networks'] = values
         elif field == 'created' and len(values) == 2:
-            start = datetime.strptime(values[0], '%Y-%m-%d')
-            end = datetime.strptime(values[1], '%Y-%m-%d')
-            utc_start = datetime(start.year, start.month, start.day, 0, 0, 0) - timedelta(hours=8)
-            utc_end = datetime(end.year, end.month, end.day, 23, 59, 59) - timedelta(hours=8)
-            api_rules.append({"field": "exe_pur_order_b.order_date", "option": "BTS", "values": [
-                utc_start.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
-                utc_end.strftime('%Y-%m-%dT%H:%M:%S.999Z')
-            ]})
+            data['created_start'], data['created_end'] = values
         elif field == 'sign' and len(values) == 2:
-            start = datetime.strptime(values[0], '%Y-%m-%d')
-            end = datetime.strptime(values[1], '%Y-%m-%d')
-            utc_start = datetime(start.year, start.month, start.day, 0, 0, 0) - timedelta(hours=8)
-            utc_end = datetime(end.year, end.month, end.day, 23, 59, 59) - timedelta(hours=8)
-            api_rules.append({"field": "receive_time", "option": "BTS", "values": [
-                utc_start.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
-                utc_end.strftime('%Y-%m-%dT%H:%M:%S.999Z')
-            ]})
+            data['sign_start'], data['sign_end'] = values
         elif field == 'status':
-            status_map = {
-                "待配载": "WAITSTOWED", "已配载": "WAITDELIVER",
-                "已发车确认": "DEPARTRUECONFIR", "已签收": "SIGNEDIN",
-                "已回单确认": "RECEIPTCONFIR"
-            }
-            status_vals = [status_map[s] for s in values if s in status_map]
-            if status_vals:
-                api_rules.append({"field": "status_dk", "option": "IN", "values": status_vals})
-    return api_rules
+            data['statuses'] = values
+    return data
+
+
+def remember_order_analysis_export_file(path, filename):
+    token = secrets.token_urlsafe(24)
+    with order_analysis_export_lock:
+        order_analysis_export_files[token] = {"path": path, "filename": filename}
+    return token
+
+
+def consume_order_analysis_export_file(token):
+    with order_analysis_export_lock:
+        return order_analysis_export_files.pop(token, None)
+
+
+def build_order_analysis_export_plan(data):
+    query_data = convert_export_rules_to_query_data(data.get('rules', []))
+    split = split_order_analysis_networks(query_data.get('networks') or list(ALL_NETWORKS.keys()))
+    if not split:
+        return {"success": False, "message": "请选择有效网点"}
+
+    downloads = []
+    date_text = datetime.now().strftime('%Y%m%d')
+    for account_key, network_names in split.items():
+        rules = build_order_analysis_rules(query_data, network_names)
+        label = get_account_config(account_key)["label"]
+        suffix = "-江南江北" if account_key == "qitao" else ""
+        file_prefix = f"订单分析-{label}{suffix}-{date_text}"
+        path = download_order_analysis_export_file(account_key, rules, file_prefix)
+        filename = os.path.basename(path)
+        token = remember_order_analysis_export_file(path, filename)
+        downloads.append({
+            "account_key": account_key,
+            "filename": filename,
+            "download_url": f"/api/order-analysis/export-download?token={token}",
+        })
+    return {"success": True, "mode": "multiple" if len(downloads) > 1 else "single", "downloads": downloads}
 
 
 @app.route('/api/order-analysis/export', methods=['POST'])
 def api_order_analysis_export():
-    """订单分析-导出：调用源系统 async-export，保持源网站默认 Excel 格式。"""
+    """订单分析-导出计划：单账号返回一个下载项，双账号返回两个下载项。"""
     try:
         data = request.get_json(silent=True) or {}
-        token = get_token()
-        if not token:
-            return jsonify({"success": False, "message": "登录失败"})
-
-        api_rules = build_order_analysis_export_rules(data.get('rules', []))
-        file_name = data.get('file_name', '订单导出.xlsx')
-        task_id = submit_order_analysis_export(token, api_rules)
-        file_key, source_name = poll_order_analysis_export(token, task_id)
-        save_path = download_order_analysis_export_file(token, file_key, file_name or source_name)
-        return jsonify({"success": True, "filename": os.path.basename(save_path), "path": save_path})
-    except PermissionError:
-        return jsonify({"success": False, "message": "文件被占用，请关闭已打开的同名文件"})
+        return jsonify(build_order_analysis_export_plan(data))
     except Exception as e:
         print(f"[ERROR] api_order_analysis_export: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "message": str(e)})
+
+
+@app.route('/api/order-analysis/export-download')
+def api_order_analysis_export_download():
+    token = request.args.get('token', '')
+    item = consume_order_analysis_export_file(token)
+    if not item:
+        return jsonify({"success": False, "message": "下载链接已失效，请重新导出"}), 404
+    return send_from_directory(os.path.dirname(item["path"]), os.path.basename(item["path"]), as_attachment=True, download_name=item["filename"])
 
 
 # ====================== 启动 ======================

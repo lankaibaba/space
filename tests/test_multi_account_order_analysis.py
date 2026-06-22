@@ -327,3 +327,55 @@ def test_query_stowage_orders_strict_returns_empty_list_for_real_no_data(monkeyp
     monkeypatch.setattr(panel, "_sess", lambda: FakeSession())
 
     assert panel.query_stowage_orders_strict("token", []) == []
+
+
+def test_build_order_analysis_export_plan_returns_two_downloads(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_export(account_key, rules, file_prefix):
+        calls.append((account_key, rules, file_prefix))
+        path = tmp_path / f"{file_prefix}.xlsx"
+        path.write_bytes(b"xlsx")
+        return str(path)
+
+    monkeypatch.setattr(panel, "download_order_analysis_export_file", fake_export)
+    monkeypatch.setattr(panel.secrets, "token_urlsafe", lambda size: f"token-{len(panel.order_analysis_export_files) + 1}")
+
+    panel.order_analysis_export_files.clear()
+    result = panel.build_order_analysis_export_plan({"rules": [{"field": "network", "values": ["零担", "江南"]}]})
+
+    assert result["success"] is True
+    assert result["mode"] == "multiple"
+    assert len(result["downloads"]) == 2
+    assert result["downloads"][0]["account_key"] == "wangyou"
+    assert result["downloads"][1]["account_key"] == "qitao"
+    assert calls[0][0] == "wangyou"
+    assert calls[1][0] == "qitao"
+
+
+def test_export_download_token_is_one_time(tmp_path):
+    path = tmp_path / "订单分析.xlsx"
+    path.write_bytes(b"xlsx")
+    panel.order_analysis_export_files.clear()
+    panel.order_analysis_export_files["token-1"] = {"path": str(path), "filename": "订单分析.xlsx"}
+
+    first = panel.consume_order_analysis_export_file("token-1")
+    second = panel.consume_order_analysis_export_file("token-1")
+
+    assert first["filename"] == "订单分析.xlsx"
+    assert second is None
+
+
+def test_convert_export_rules_to_query_data():
+    data = panel.convert_export_rules_to_query_data([
+        {"field": "network", "values": ["零担", "江南"]},
+        {"field": "created", "values": ["2026-06-01", "2026-06-02"]},
+        {"field": "sign", "values": ["2026-06-03", "2026-06-04"]},
+        {"field": "status", "values": ["已签收"]},
+    ])
+    assert data["networks"] == ["零担", "江南"]
+    assert data["created_start"] == "2026-06-01"
+    assert data["created_end"] == "2026-06-02"
+    assert data["sign_start"] == "2026-06-03"
+    assert data["sign_end"] == "2026-06-04"
+    assert data["statuses"] == ["已签收"]
