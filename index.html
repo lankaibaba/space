@@ -315,10 +315,10 @@
             <div class="flex items-center justify-between">
                 <div>
                     <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-3">
-                        <span class="inline-flex items-center justify-center w-11 h-11 rounded-2xl shadow-lg overflow-hidden bg-gradient-to-br from-sky-400 via-indigo-500 to-purple-500">
+                        <button onclick="switchAccount()" id="accountSwitchBtn" class="inline-flex items-center justify-center w-11 h-11 rounded-2xl shadow-lg overflow-hidden bg-gradient-to-br from-sky-400 via-indigo-500 to-purple-500 hover:scale-105 transition-transform" title="点击切换账号">
                             <img src="/static/app-logo.svg" alt="王友小助手 Logo" class="w-full h-full object-cover" draggable="false">
-                        </span>
-                        王友小助手
+                        </button>
+                        <span id="appTitleText">王友小助手</span>
                     </h1>
                     <p class="text-slate-500 mt-1.5 text-sm">实时监控订单状态与配送情况</p>
                 </div>
@@ -1033,6 +1033,7 @@
             
             <!-- 统计卡片 -->
             <div class="grid grid-cols-5 gap-4 mb-4" id="analysisSummary"></div>
+            <div id="orderAnalysisSourceSummary" class="hidden text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-4"></div>
             
             <!-- 图表区域 -->
             <div class="grid grid-cols-2 gap-4 mb-4">
@@ -1225,6 +1226,48 @@
         let selectedNetworksSet = new Set();
         let pendingUpdateInfo = null;
         let pendingUpdateToken = null;
+        let currentAccountKey = 'wangyou';
+
+        async function loadCurrentAccount() {
+            try {
+                const resp = await fetch('/api/current-account');
+                const data = await resp.json();
+                if (data.success) {
+                    currentAccountKey = data.account_key;
+                    const titleEl = document.getElementById('appTitleText');
+                    if (titleEl) titleEl.textContent = data.label;
+                    document.title = data.label;
+                }
+            } catch (err) {
+                console.warn('加载当前账号失败', err);
+            }
+        }
+
+        async function switchAccount() {
+            const btn = document.getElementById('accountSwitchBtn');
+            if (btn) btn.disabled = true;
+            try {
+                const resp = await fetch('/api/account-switch', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    alert(data.message || '切换账号失败');
+                    return;
+                }
+                currentAccountKey = data.account_key;
+                const titleEl = document.getElementById('appTitleText');
+                if (titleEl) titleEl.textContent = data.label;
+                document.title = data.label;
+                await handleRefresh();
+            } catch (err) {
+                alert('切换账号失败：' + err.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
 
         function escapeUpdateText(value) {
             const div = document.createElement('div');
@@ -3673,6 +3716,20 @@
             document.getElementById('analysisStatus').classList.remove('flex');
         }
 
+        function renderOrderAnalysisSources(sources) {
+            const el = document.getElementById('orderAnalysisSourceSummary');
+            if (!el) return;
+            const wangyou = sources?.wangyou || 0;
+            const qitao = sources?.qitao || 0;
+            if (!wangyou && !qitao) {
+                el.textContent = '';
+                el.classList.add('hidden');
+                return;
+            }
+            el.textContent = `已合并账号数据：王友小助手 ${wangyou} 单，齐涛小助手 ${qitao} 单`;
+            el.classList.remove('hidden');
+        }
+
         async function analysisQuery() {
             const logisticsVals = getMultiSelectValues('ms-logistics');
             const statusVals = getMultiSelectValues('ms-status');
@@ -3714,13 +3771,16 @@
                     }
 
                     analysisData = orders;
+                    renderOrderAnalysisSources(result.sources || {});
                     renderAnalysisSummary({success: true, data: orders, total: orders.length, total_weight: orders.reduce((s,o) => s + (o.stowage_weight||0), 0)});
                     renderAnalysisTable(orders);
                     setBtnLoading('analysisQueryBtn', false, '', '查询');
                 } else {
+                    renderOrderAnalysisSources({});
                     setBtnLoading('analysisQueryBtn', false, '', '查询');
                 }
             } catch (e) {
+                renderOrderAnalysisSources({});
                 setBtnLoading('analysisQueryBtn', false, '', '查询');
             }
         }
@@ -3949,8 +4009,27 @@
                 const result = await resp.json();
 
                 if (result.success) {
-                    showAnalysisStatus('导出成功: ' + (result.file_name || fileName));
-                    setTimeout(hideAnalysisStatus, 3000);
+                    const downloads = result.downloads || [];
+                    if (downloads.length === 0) {
+                        showAnalysisStatus('导出失败: 未生成下载文件');
+                        setTimeout(hideAnalysisStatus, 3000);
+                    } else {
+                        downloads.forEach((download, index) => {
+                            setTimeout(() => {
+                                const link = document.createElement('a');
+                                link.href = download.url || ('/api/order-analysis/export-download?token=' + encodeURIComponent(download.token));
+                                link.download = download.file_name || '';
+                                link.style.display = 'none';
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                            }, index * 800);
+                        });
+                        showAnalysisStatus(downloads.length > 1
+                            ? `已生成 ${downloads.length} 个导出文件，浏览器将自动连续下载。`
+                            : '导出文件已生成，浏览器将开始下载。');
+                        setTimeout(hideAnalysisStatus, 3000);
+                    }
                 } else {
                     showAnalysisStatus('导出失败: ' + (result.message || ''));
                     setTimeout(hideAnalysisStatus, 3000);
@@ -3964,6 +4043,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            loadCurrentAccount();
             setTimeout(() => checkForUpdate(true), 1500);
         });
 
