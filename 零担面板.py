@@ -2342,6 +2342,22 @@ ORDER_ANALYSIS_EXPORT_SORT_FIELDS = [
 ]
 
 
+def build_stowage_query_payload(rules, size=5000):
+    return {
+        "debugFlag": False,
+        "developmentSystemId": None,
+        "direction": "DESC",
+        "dynamicFormCode": "stowage_sign_receipt",
+        "fromClientType": "pc",
+        "number": 0,
+        "property": "id",
+        "rules": rules,
+        "size": size,
+        "sorts": [{"property": "delivery_date", "direction": "ASC"}],
+        "specialConditions": []
+    }
+
+
 def query_stowage_orders(token, rules, size=5000):
     """查询配载单数据"""
     try:
@@ -2349,24 +2365,27 @@ def query_stowage_orders(token, rules, size=5000):
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json;charset=UTF-8"
         }
-        payload = {
-            "debugFlag": False,
-            "developmentSystemId": None,
-            "direction": "DESC",
-            "dynamicFormCode": "stowage_sign_receipt",
-            "fromClientType": "pc",
-            "number": 0,
-            "property": "id",
-            "rules": rules,
-            "size": size,
-            "sorts": [{"property": "delivery_date", "direction": "ASC"}],
-            "specialConditions": []
-        }
+        payload = build_stowage_query_payload(rules, size)
         resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=60)
         return resp.json().get("content", [])
     except Exception as e:
         print(f"[ERROR] query_stowage_orders: {e}")
         return []
+
+
+def query_stowage_orders_strict(token, rules, size=5000):
+    """严格查询配载单数据：异常直接抛出，供订单分析避免返回半完整结果。"""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json;charset=UTF-8"
+    }
+    payload = build_stowage_query_payload(rules, size)
+    resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=60)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise RuntimeError("配载单查询响应格式异常")
+    return data.get("content", [])
 
 
 def parse_stowage_order(order):
@@ -2485,12 +2504,15 @@ def query_order_analysis_orders(data):
     merged = []
     sources = {}
     for account_key, account_networks in split.items():
+        label = get_account_config(account_key)["label"]
         token = login(account_key)
         if not token:
-            label = get_account_config(account_key)["label"]
             raise RuntimeError(f"{label}登录失败")
         rules = build_order_analysis_rules(data, account_networks)
-        raw_orders = query_stowage_orders(token, rules)
+        try:
+            raw_orders = query_stowage_orders_strict(token, rules)
+        except Exception as exc:
+            raise RuntimeError(f"{label}订单分析查询失败：{exc}") from exc
         parsed = []
         for item in raw_orders:
             order = parse_stowage_order(item)

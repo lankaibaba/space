@@ -3,6 +3,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 MODULE_PATH = Path(__file__).resolve().parents[1] / "零担面板.py"
 
 spec = importlib.util.spec_from_file_location("panel", MODULE_PATH)
@@ -235,7 +237,7 @@ def test_query_order_analysis_merges_two_accounts(monkeypatch):
             return [{"id": "2", "source_order_no": "QT001", "stowage_all_weight": 20, "k_contract_line_a": {"network_show": "江南", "network": panel.ALL_NETWORKS["江南"]}}]
         return []
 
-    monkeypatch.setattr(panel, "query_stowage_orders", fake_query)
+    monkeypatch.setattr(panel, "query_stowage_orders_strict", fake_query)
 
     result = panel.query_order_analysis_orders({"networks": ["零担", "江南"]})
 
@@ -259,3 +261,32 @@ def test_order_analysis_query_api_returns_sources(monkeypatch):
     assert data["total"] == 1
     assert data["total_weight"] == 3
     assert data["sources"] == {"wangyou": 1}
+
+
+def test_query_order_analysis_raises_when_one_account_query_fails(monkeypatch):
+    monkeypatch.setattr(panel, "login", lambda account_key=None: f"token-{account_key}")
+
+    def fake_query(token, rules, size=5000):
+        if token == "token-qitao":
+            raise TimeoutError("timeout")
+        return [{"id": "1", "source_order_no": "WY001", "stowage_all_weight": 10}]
+
+    monkeypatch.setattr(panel, "query_stowage_orders_strict", fake_query)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        panel.query_order_analysis_orders({"networks": ["零担", "江南"]})
+
+    message = str(exc_info.value)
+    assert "齐涛小助手" in message
+    assert "查询失败" in message
+
+
+def test_order_analysis_query_api_returns_failure_when_helper_raises(monkeypatch):
+    monkeypatch.setattr(panel, "query_order_analysis_orders", lambda data: (_ for _ in ()).throw(RuntimeError("齐涛小助手订单分析查询失败：timeout")))
+
+    response = panel.app.test_client().post('/api/order-analysis/query', json={"networks": ["零担", "江南"]})
+    data = response.get_json()
+
+    assert data["success"] is False
+    assert "齐涛小助手" in data["message"]
+    assert "查询失败" in data["message"]
