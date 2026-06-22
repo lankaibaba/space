@@ -145,3 +145,37 @@ def test_repeated_account_switches_schedule_only_one_refresh(monkeypatch):
     client.post('/api/account-switch', json={"account_key": "qitao"})
 
     assert len(created_threads) == 1
+
+
+def test_account_refresh_processes_latest_pending_switch(monkeypatch):
+    panel.CURRENT_ACCOUNT_KEY = "wangyou"
+    panel.account_generation = 0
+    panel.account_refresh_in_progress = False
+    calls = []
+    created_threads = []
+
+    def fake_refresh_all_data(account_key=None, generation=None):
+        calls.append((account_key, generation))
+        if len(calls) == 1:
+            panel.app.test_client().post('/api/account-switch', json={"account_key": "wangyou"})
+            panel.app.test_client().post('/api/account-switch', json={"account_key": "qitao"})
+        return True
+
+    class FakeThread:
+        def __init__(self, target, daemon):
+            self.target = target
+            self.daemon = daemon
+            created_threads.append(self)
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(panel, "refresh_all_data", fake_refresh_all_data)
+    monkeypatch.setattr(panel.threading, "Thread", FakeThread)
+
+    response = panel.app.test_client().post('/api/account-switch', json={"account_key": "qitao"})
+
+    assert response.status_code == 200
+    assert len(created_threads) == 1
+    assert calls == [("qitao", 1), ("qitao", 3)]
+    assert panel.account_refresh_in_progress is False

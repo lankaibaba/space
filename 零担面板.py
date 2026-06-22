@@ -55,6 +55,7 @@ account_lock = threading.Lock()
 account_generation = 0
 account_refresh_lock = threading.Lock()
 account_refresh_in_progress = False
+account_refresh_pending = None
 
 # 保留兼容旧代码/测试的常量名
 MY_ACCOUNT = ACCOUNTS["wangyou"]["account"]
@@ -1611,22 +1612,29 @@ def api_version():
 
 
 def schedule_account_refresh(account_key, generation):
-    """账号切换后串行触发全量刷新，避免重复启动并发刷新线程。"""
-    global account_refresh_in_progress
+    """账号切换后串行触发全量刷新，保留最新 pending 请求。"""
+    global account_refresh_in_progress, account_refresh_pending
     with account_refresh_lock:
         if account_refresh_in_progress:
+            account_refresh_pending = (account_key, generation)
             return False
         account_refresh_in_progress = True
 
     def refresh_after_switch():
-        global account_refresh_in_progress
-        try:
-            refresh_all_data(account_key=account_key, generation=generation)
-        except Exception as exc:
-            print(f"[{datetime.now()}] 切换账号后刷新异常: {exc}")
-        finally:
+        global account_refresh_in_progress, account_refresh_pending
+        next_account_key = account_key
+        next_generation = generation
+        while True:
+            try:
+                refresh_all_data(account_key=next_account_key, generation=next_generation)
+            except Exception as exc:
+                print(f"[{datetime.now()}] 切换账号后刷新异常: {exc}")
             with account_refresh_lock:
-                account_refresh_in_progress = False
+                if account_refresh_pending is None:
+                    account_refresh_in_progress = False
+                    return
+                next_account_key, next_generation = account_refresh_pending
+                account_refresh_pending = None
 
     threading.Thread(target=refresh_after_switch, daemon=True).start()
     return True
