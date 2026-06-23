@@ -97,7 +97,7 @@ KPI_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal
 KPI_DETAIL_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal/supplier_abnormal/375549423855472640"
 
 # ====================== 【程序版本与自动更新】 ======================
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 GITHUB_REPO = "lankaibaba/space"
 UPDATE_ASSET_NAME = "王友小助手.exe"
 GITHUB_RELEASE_ASSET_NAMES = {UPDATE_ASSET_NAME, "default.exe"}
@@ -2356,7 +2356,7 @@ def build_stowage_query_payload(rules, size=5000):
         "property": "id",
         "rules": rules,
         "size": size,
-        "sorts": [{"property": "delivery_date", "direction": "ASC"}],
+        "sorts": [],
         "specialConditions": []
     }
 
@@ -2382,19 +2382,26 @@ def query_stowage_orders_strict(token, rules, size=5000):
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json;charset=UTF-8"
     }
-    payload = build_stowage_query_payload(rules, size)
-    resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
-    if not isinstance(data, dict):
-        raise RuntimeError("配载单查询响应格式异常")
-    if "content" not in data:
-        message = data.get("message") or data.get("msg") or data.get("status") or "配载单查询响应缺少content"
-        raise RuntimeError(str(message))
-    content = data.get("content")
-    if not isinstance(content, list):
-        raise RuntimeError("配载单查询响应content格式异常")
-    return content
+    all_content = []
+    page_number = 0
+    while True:
+        payload = build_stowage_query_payload(rules, size)
+        payload["number"] = page_number
+        resp = _sess().post(RECEIPT_QUERY_URL, json=payload, headers=headers, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, dict):
+            raise RuntimeError("配载单查询响应格式异常")
+        if "content" not in data:
+            message = data.get("message") or data.get("msg") or data.get("status") or "配载单查询响应缺少content"
+            raise RuntimeError(str(message))
+        content = data.get("content")
+        if not isinstance(content, list):
+            raise RuntimeError("配载单查询响应content格式异常")
+        all_content.extend(content)
+        if len(content) < size:
+            return all_content
+        page_number += 1
 
 
 def parse_stowage_order(order):

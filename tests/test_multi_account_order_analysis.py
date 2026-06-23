@@ -266,6 +266,19 @@ def test_build_order_analysis_rules_keeps_network_filter_for_partial_wangyou_net
     }]
 
 
+def test_build_order_analysis_rules_matches_source_created_filter():
+    rules = panel.build_order_analysis_rules({
+        "created_start": "2026-06-01",
+        "created_end": "2026-06-23",
+    }, None)
+
+    assert rules == [{
+        "field": "exe_pur_order_b.order_date",
+        "option": "BTS",
+        "values": ["2026-05-31T16:00:00.000Z", "2026-06-23T15:59:59.999Z"],
+    }]
+
+
 def test_order_analysis_multiselect_ignores_select_all_checkbox():
     html = (Path(__file__).resolve().parents[1] / "index.html").read_text(encoding="utf-8")
     start = html.index("function getMultiSelectValues")
@@ -354,6 +367,46 @@ def test_query_stowage_orders_strict_returns_empty_list_for_real_no_data(monkeyp
     monkeypatch.setattr(panel, "_sess", lambda: FakeSession())
 
     assert panel.query_stowage_orders_strict("token", []) == []
+
+
+def test_build_stowage_query_payload_matches_source_sorting():
+    payload = panel.build_stowage_query_payload([{"field": "x"}], size=15)
+
+    assert payload["direction"] == "DESC"
+    assert payload["property"] == "id"
+    assert payload["number"] == 0
+    assert payload["size"] == 15
+    assert payload["sorts"] == []
+
+
+def test_query_stowage_orders_strict_fetches_all_pages(monkeypatch):
+    seen_pages = []
+
+    class FakeResponse:
+        def __init__(self, content):
+            self._content = content
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"content": self._content}
+
+    class FakeSession:
+        def post(self, url, json, headers, timeout):
+            seen_pages.append(json["number"])
+            if json["number"] == 0:
+                return FakeResponse([{"id": f"a-{i}"} for i in range(5000)])
+            if json["number"] == 1:
+                return FakeResponse([{"id": f"b-{i}"} for i in range(2921)])
+            return FakeResponse([])
+
+    monkeypatch.setattr(panel, "_sess", lambda: FakeSession())
+
+    rows = panel.query_stowage_orders_strict("token", [], size=5000)
+
+    assert len(rows) == 7921
+    assert seen_pages == [0, 1]
 
 
 def test_build_order_analysis_export_plan_returns_two_downloads(monkeypatch, tmp_path):
