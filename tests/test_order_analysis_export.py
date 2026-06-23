@@ -49,12 +49,13 @@ def test_order_analysis_export_uses_source_async_export_flow(monkeypatch, tmp_pa
     data = response.get_json()
 
     assert data["success"] is True
-    assert data["filename"] == "0608-0617签收-讯服、广宏网点.xlsx"
-    assert calls[0][0] == "submit"
-    assert calls[0][1] == "token-1"
+    assert data["mode"] == "single"
+    assert data["downloads"][0]["filename"] == "0608-0617签收-讯服、广宏网点.xlsx"
+    assert data["downloads"][0]["account_key"] == "wangyou"
+    assert data["downloads"][0]["download_url"].startswith("/api/order-analysis/export-download?token=")
+    assert calls[0][0] == "download"
+    assert calls[0][1] == "wangyou"
     assert {rule["field"] for rule in calls[0][2]} == {"k_contract_line_a.network", "receive_time"}
-    assert calls[1] == ("poll", "token-1", "task-1")
-    assert calls[2] == ("download", "token-1", "file-key-1", "0608-0617签收-讯服、广宏网点.xlsx")
 
 
 def test_build_order_analysis_export_payload_matches_source_default_shape():

@@ -248,6 +248,33 @@ def test_query_order_analysis_merges_two_accounts(monkeypatch):
     assert login_calls == ["wangyou", "qitao"]
 
 
+def test_build_order_analysis_rules_omits_network_filter_for_all_wangyou_networks():
+    wangyou_networks = [name for name in panel.ALL_NETWORKS if name not in panel.QITAO_NETWORKS]
+
+    rules = panel.build_order_analysis_rules({}, wangyou_networks)
+
+    assert all(rule["field"] != "k_contract_line_a.network" for rule in rules)
+
+
+def test_build_order_analysis_rules_keeps_network_filter_for_partial_wangyou_networks():
+    rules = panel.build_order_analysis_rules({}, ["零担"])
+
+    assert rules == [{
+        "field": "k_contract_line_a.network",
+        "option": "IN",
+        "values": [panel.ALL_NETWORKS["零担"]],
+    }]
+
+
+def test_order_analysis_multiselect_ignores_select_all_checkbox():
+    html = (Path(__file__).resolve().parents[1] / "index.html").read_text(encoding="utf-8")
+    start = html.index("function getMultiSelectValues")
+    end = html.index("function setBtnLoading", start)
+    function_body = html[start:end]
+
+    assert 'input[type="checkbox"]:checked:not([value=""])' in function_body
+
+
 def test_order_analysis_query_api_returns_sources(monkeypatch):
     monkeypatch.setattr(panel, "query_order_analysis_orders", lambda data: {
         "orders": [{"source_order_no": "A", "stowage_weight": 3, "source_account": "wangyou"}],

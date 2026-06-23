@@ -97,7 +97,7 @@ KPI_QUERY_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal
 KPI_DETAIL_URL = "https://sdm.etransfar.com/jbl/api/module-data/supplier_abnormal/supplier_abnormal/375549423855472640"
 
 # ====================== 【程序版本与自动更新】 ======================
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 GITHUB_REPO = "lankaibaba/space"
 UPDATE_ASSET_NAME = "王友小助手.exe"
 GITHUB_RELEASE_ASSET_NAMES = {UPDATE_ASSET_NAME, "default.exe"}
@@ -2460,6 +2460,18 @@ def split_order_analysis_networks(networks):
         result[key].append(name)
     return {k: v for k, v in result.items() if v}
 
+def build_order_analysis_network_ids(network_names):
+    """Return source-site network IDs; empty means no network filter."""
+    if not network_names or not isinstance(network_names, list):
+        return []
+    valid_networks = [n for n in network_names if n in ALL_NETWORKS]
+    if not valid_networks:
+        return []
+    wangyou_networks = [n for n in ALL_NETWORKS if n not in QITAO_NETWORKS]
+    if set(valid_networks) == set(wangyou_networks):
+        return []
+    return [ALL_NETWORKS[n] for n in valid_networks]
+
 
 def bj_date_to_utc_range(start_value, end_value):
     start = datetime.strptime(start_value[:10], '%Y-%m-%d')
@@ -2473,7 +2485,7 @@ def build_order_analysis_rules(data, network_names=None):
     """构建订单分析查询/导出共用筛选规则。"""
     rules = []
     if network_names:
-        network_ids = [ALL_NETWORKS[n] for n in network_names if n in ALL_NETWORKS]
+        network_ids = build_order_analysis_network_ids(network_names)
         if network_ids:
             rules.append({"field": "k_contract_line_a.network", "option": "IN", "values": network_ids})
 

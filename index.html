@@ -3669,7 +3669,7 @@
             // 从 DOM 读取选中状态（兼容硬编码和动态渲染）
             const drop = document.getElementById(id + '-drop');
             if (!drop) return [];
-            const checks = drop.querySelectorAll('input[type="checkbox"]:checked');
+            const checks = drop.querySelectorAll('input[type="checkbox"]:checked:not([value=""])');
             const vals = Array.from(checks).map(cb => cb.value);
             const all = MULTI_SELECT_OPTIONS[id] || [];
             // 全选或未选 → 不筛选
@@ -4064,4 +4064,3 @@
     </script>
 </body>
 </html>
- 
